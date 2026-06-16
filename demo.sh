@@ -67,11 +67,11 @@ cmd_prep() {
   # 3. Create the sandbox (idempotent — skip if already exists)
   echo
   echo "=== prep: creating sandbox '$SANDBOX_NAME' ==="
-  if sbx status "$SANDBOX_NAME" &>/dev/null; then  # ▶ host-validate
+  if sbx ls --quiet 2>/dev/null | grep -qx "$SANDBOX_NAME"; then  # ▶ host-validate
     ok "Sandbox '$SANDBOX_NAME' already exists — skipping creation"
   else
-    # ▶ host-validate
-    sbx create claude --name "$SANDBOX_NAME"
+    # ▶ host-validate — `sbx create AGENT PATH`: claude agent, repo root as workspace
+    sbx create --name "$SANDBOX_NAME" claude "$REPO_ROOT"
     ok "Sandbox '$SANDBOX_NAME' created"
   fi
 
@@ -91,9 +91,9 @@ cmd_prep() {
 cmd_check() {
   echo "=== check: verifying sandbox status ==="
 
-  # 1. Confirm sandbox is running
+  # 1. Confirm sandbox exists
   # ▶ host-validate
-  if sbx status "$SANDBOX_NAME" &>/dev/null; then
+  if sbx ls --quiet 2>/dev/null | grep -qx "$SANDBOX_NAME"; then
     ok "Sandbox '$SANDBOX_NAME' is running"
   else
     fail "Sandbox '$SANDBOX_NAME' is not running — run './demo.sh prep' first"
@@ -170,10 +170,10 @@ cmd_reset() {
   fi
 
   # ▶ host-validate
-  if sbx status "$SANDBOX_NAME" &>/dev/null; then
-    # ▶ host-validate
-    sbx delete "$SANDBOX_NAME"
-    ok "Sandbox '$SANDBOX_NAME' deleted"
+  if sbx ls --quiet 2>/dev/null | grep -qx "$SANDBOX_NAME"; then
+    # ▶ host-validate — --force: this script already prompted above, so skip sbx's own prompt
+    sbx rm --force "$SANDBOX_NAME"
+    ok "Sandbox '$SANDBOX_NAME' removed"
   else
     warn "Sandbox '$SANDBOX_NAME' was not running — nothing to delete"
   fi

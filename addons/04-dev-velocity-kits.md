@@ -132,11 +132,11 @@ Compare this to the alternative: encoding instructions in a per-task prompt, a c
 Clean up the sandbox between demo runs:
 
 ```bash
-# ▶ host-validate
-sbx delete claude
+# ▶ host-validate (prompts for confirmation; add --force to skip)
+sbx rm claude
 ```
 
-If you ran multiple sandboxes with the same name in sequence, sbx will use the most recent one. Verify with `sbx list` before deleting if unsure.
+If you ran multiple sandboxes with the same name in sequence, sbx will use the most recent one. Verify with `sbx ls` before removing if unsure.
 
 ---
 
@@ -160,4 +160,4 @@ If you ran multiple sandboxes with the same name in sequence, sbx will use the m
 | Step 2 — Stack two kits | **host-validate** | Requires sbx CLI; network must allow pypi.org and astral.sh |
 | Step 3 — Load kit via Git URL | **host-validate** | Requires sbx CLI and network access to github.com |
 | Step 4 — Show agentContext | Self-validated (grep local) | No sbx CLI required |
-| Reset — `sbx delete claude` | **host-validate** | Requires sbx CLI |
+| Reset — `sbx rm claude` | **host-validate** | Requires sbx CLI |

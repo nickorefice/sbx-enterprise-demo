@@ -66,7 +66,8 @@ Point to the `kits/` directory — that is where policy lives. Point to `service
 
 ```bash
 # Spin up the demo sandbox (this takes ~10 s on a warm cache)
-sbx create claude --name demo-agent
+# `sbx create AGENT PATH` — claude is the agent, "." is the workspace (the repo root)
+sbx create --name demo-agent claude .
 ```
 
 **EXPECT**: A sandbox ID printed and a status line confirming the microVM is running.
@@ -257,11 +258,11 @@ sbx policy ls
 **EXPECT**: Active rules listed, including any org-level rules that override or supplement the kit-level spec. Inactive or suppressed rules appear with a note explaining why.
 
 ```bash
-# Summary status of the demo sandbox
-sbx status demo-agent
+# Summary status of all sandboxes (agent, status, ports, workspace)
+sbx ls
 ```
 
-**EXPECT**: A status block showing the sandbox is running, its network policy is applied, and its credential rewrites are active.
+**EXPECT**: The `demo-agent` row shows the sandbox running, with its agent, workspace, and any published ports. (Network-policy and credential rewrites are shown by `sbx policy ls`, above.)
 
 ---
 
@@ -280,17 +281,17 @@ sbx status demo-agent
 Run this after every demo to return to a clean state before the next session.
 
 ```bash
-# Tear down the demo sandbox completely
-sbx delete demo-agent
+# Tear down the demo sandbox completely (prompts for confirmation; add --force to skip)
+sbx rm demo-agent
 ```
 
 Verify it's gone:
 
 ```bash
-sbx status demo-agent
+sbx ls
 ```
 
-**EXPECT**: An error or empty response confirming the sandbox no longer exists.
+**EXPECT**: `demo-agent` no longer appears in the list, confirming the sandbox was removed.
 
 If you need to reset network policy state that accumulated during the demo:
 

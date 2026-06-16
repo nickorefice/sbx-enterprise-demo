@@ -12,7 +12,7 @@
 - The `sbx-enterprise-demo` repo checked out locally (`github.com/nickorefice/sbx-enterprise-demo`)
 - Three terminal tabs or panes ready (tmux, iTerm2 split panes, or similar)
 - `git` available locally (any recent version)
-- No existing sandboxes named `svc-vote`, `svc-result`, or `svc-gateway` (`sbx list` to confirm)
+- No existing sandboxes named `svc-vote`, `svc-result`, or `svc-gateway` (`sbx ls` to confirm)
 
 ---
 
@@ -173,9 +173,10 @@ git merge --no-ff fleet/gateway -m "merge: gateway metrics aggregation"
 Clean up sandboxes and local tracking branches so the demo is ready to run again:
 
 ```bash
-# Delete the sandboxes (stops the VMs, releases resources)
+# Remove the sandboxes (stops the VMs, releases resources). Prompts for
+# confirmation; add --force to skip in a scripted reset.
 # ▶ host-validate
-sbx delete svc-vote svc-result svc-gateway
+sbx rm svc-vote svc-result svc-gateway
 
 # Remove local fleet branches
 git branch -D fleet/vote fleet/result fleet/gateway 2>/dev/null || true
@@ -206,7 +207,7 @@ git revert -m 1 HEAD
 **Audit trail**: After the run, inspect what each agent actually touched on the network:
 
 ```bash
-# ▶ host-validate — run while sandboxes still exist, or immediately after sbx delete
+# ▶ host-validate — run while sandboxes still exist, or immediately after sbx rm
 sbx policy log
 ```
 
@@ -229,5 +230,5 @@ The default-deny network proxy means an agent cannot phone home to an attacker-c
 | Step 1 — Launch fleet | **host-validate** | Requires `sbx` CLI on host |
 | Step 2 — Fetch and review | Self-validated (git local) | Runs entirely on host, no sbx needed |
 | Step 3 — Merge | Self-validated (git local) | Runs entirely on host |
-| Step 4 — Reset | **host-validate** (`sbx delete`) + self-validated (git local) | `sbx delete` requires host CLI |
+| Step 4 — Reset | **host-validate** (`sbx rm`) + self-validated (git local) | `sbx rm` requires host CLI |
 | Security audit (`sbx policy log`) | **host-validate** | Run while sandboxes still exist |
