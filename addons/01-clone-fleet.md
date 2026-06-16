@@ -33,17 +33,17 @@ Three sandboxes = three completely independent clones. They cannot see each othe
 Verify the three services each have room for the agent to add something meaningful:
 
 ```bash
-# vote service — Python/Flask, currently has /healthz, /vote, /results
+# Run these from the repo root. vote service — Python/Flask, currently has /healthz, /vote, /results
 # Agent will add: /stats (vote percentages + timestamp)
-grep -n "def " /path/to/sbx-enterprise-demo/services/vote/app.py
+grep -n "def " services/vote/app.py
 
 # result service — Node.js, currently has /healthz and HTML rendering
 # Agent will add: uptime field to /healthz
-grep -n "pathname" /path/to/sbx-enterprise-demo/services/result/server.js
+grep -n "pathname" services/result/server.js
 
 # gateway — Go, currently proxies /vote and /results, has /healthz
 # Agent will add: /metrics (aggregates upstream /healthz responses)
-grep -n "HandleFunc" /path/to/sbx-enterprise-demo/services/gateway/main.go
+grep -n "HandleFunc" services/gateway/main.go
 ```
 
 If the endpoints already exist from a previous run, reset to a clean commit before proceeding (see **Step 4: Reset**).

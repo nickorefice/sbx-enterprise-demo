@@ -1,12 +1,28 @@
+# PLACEHOLDER CA — NOT A REAL CORPORATE CERTIFICATE.
+# This is a structurally valid self-signed cert (subject: 'DUMMY Corp CA - REPLACE BEFORE USE')
+# so that 'docker build' / update-ca-certificates succeeds out of the box.
+# Replace it with your organization's real CA before any production build:
+#   cp /path/to/your/corp-ca.crt templates/golden/corp-ca.crt
+# To export your real cert, e.g. on macOS:
+#   security find-certificate -a -p /Library/Keychains/System.keychain > corp-ca.crt
 -----BEGIN CERTIFICATE-----
-# PLACEHOLDER — replace with your real corporate CA certificate before building.
-#
-# To obtain the real cert:
-#   macOS:  security find-certificate -a -p /Library/Keychains/System.keychain | grep -A 25 "Your Corp CA"
-#   Linux:  cat /etc/ssl/certs/<your-corp-ca>.pem
-#   ADCS:   certutil -ca.cert corp-ca.crt   (on a domain-joined Windows host)
-#
-# The file must be a PEM-encoded X.509 certificate (base64 between the
-# BEGIN/END CERTIFICATE markers). If your CA chain has an intermediate,
-# concatenate root + intermediate into this file, root last.
+MIIDeTCCAmGgAwIBAgIUFPBhX5/IVR89GAY9ZQNiBc2yiPowDQYJKoZIhvcNAQEL
+BQAwTDEdMBsGA1UECgwURFVNTVkgTk9OLVBST0RVQ1RJT04xKzApBgNVBAMMIkRV
+TU1ZIENvcnAgQ0EgLSBSRVBMQUNFIEJFRk9SRSBVU0UwHhcNMjYwNjE2MjIxMjI3
+WhcNMzYwNjEzMjIxMjI3WjBMMR0wGwYDVQQKDBREVU1NWSBOT04tUFJPRFVDVElP
+TjErMCkGA1UEAwwiRFVNTVkgQ29ycCBDQSAtIFJFUExBQ0UgQkVGT1JFIFVTRTCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAI/wyU8q3OQNFPuFelqbrh3e
+qgikK7VVBlV5gcjRGY6A5QIpunrecEfTmOJ8A4Dj10ZkqF9gceL3ot2AXSjLaTSj
+EJDCd3o6XddtMwExy0fNb9TTHBYRmKzsZAl0LRJlXzKlNfYZLGQRav6R5m7IXQCj
+4s8VsJiTdB5/WTfh0PgFysg4CUFe0ndrVoN6inSdyxiNGd9aRfvwvSEaDNVIGoqg
+HuVg8eD/irjI7JeBOpumnaBYlllEM6vFzok7tBkdwOJy5rqpvjUd1bKkok5KmNUj
+E/RMs87NJIcuhvyHcpHwjWG9hlU+5s0CpggMBi0fmP2wEPU+hVDxeDcJwu5ke/UC
+AwEAAaNTMFEwHQYDVR0OBBYEFI2srVBP6ZAAteB+E25fitVSYcudMB8GA1UdIwQY
+MBaAFI2srVBP6ZAAteB+E25fitVSYcudMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBAG1kBechZM1mAPEKf3P3bIFRPPLQw0Oxy7VQEQHDMGhlUyKa
+dK+EA8AsmtdQ7Fp9uAz9fD/JTJha08vrm1AVj7Oci53sxXNw2ygA0kh3mrkbich4
+DiaOSqRz2xaiU5pdPyBSrlAmwu8r5HMAeUd28WvYa/Z1Bpm1V2UEStgkVpmiBStn
+C53Vs26mLwCLB6R2o2HudQwZyTPRsO5hm2lPVGXFIn3BkhKsvmrN54PN2uCMb/hG
+T3E29CBii2G7BRa2Lhgqk1heN38yfVbCk3rMLMmSBA2tRl3+yR3UJzNllyyyROMU
+ruy1F5XZH5dsGeyz2SepoAzmzuhjirQzC/f3GIY=
 -----END CERTIFICATE-----

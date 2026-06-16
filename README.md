@@ -95,12 +95,15 @@ open RUNBOOK.md   # or cat it; it's a presenter script
 
 ## Validation status
 
-Services are compile-validated in CI:
+Self-validated (actually executed when authoring this repo):
 - `go build ./...` (gateway) — **self-validated**
 - `node --check server.js` (result) — **self-validated**
 - `python3 -m py_compile app.py` (vote) — **self-validated**
+- `python3 -c "import yaml; yaml.safe_load(...)"` on both `kits/*/spec.yaml` — **self-validated** (well-formed YAML)
+- `DRY_RUN=1 bash templates/golden/build.sh` (golden template `docker build`) — **self-validated** (image builds; `gh 2.50.0` and `ruff 0.4.10` verified inside the image)
+- All internal Markdown links resolve to existing files — **self-validated**
 
-Every step that requires a live `sbx` environment is marked **▶ host-validate** in the runbook and add-on docs. Those steps were authored from the sbx specification and validated patterns; they have not been run inside this sandbox (sbx cannot run nested inside sbx).
+Every step that requires a live `sbx` environment (`sbx run`, `sbx create`, `sbx kit validate`, registry push) is marked **▶ host-validate** in the runbook and add-on docs. Those steps were authored from the sbx specification and validated patterns; they have not been run inside this sandbox (sbx cannot run nested inside sbx).
 
 ---
 
