@@ -19,8 +19,8 @@
 
 A kit mixin does three things:
 
-1. **Installs tooling** inside the sandbox at creation time (`commands.install`) and ensures it is present on every restart (`commands.startup`)
-2. **Drops configuration files** into the workspace (`commands.initFiles`) so the agent and all tools share identical settings
+1. **Installs tooling** inside the sandbox at creation time (`commands.install`, run as the agent user with `user: "1000"`)
+2. **Drops configuration files** into the workspace — any file under the kit's `files/workspace/` directory is copied as-is into the sandbox, so the agent and all tools share identical settings
 3. **Instructs the agent** via `agentContext` — a block of text injected into the agent's system prompt at startup, so the agent knows what tools are available and how to use them
 
 Kits are composable: you can pass `--kit` multiple times to a single `sbx run` command. Each kit's network allowlist is merged, its install commands run sequentially, and its `agentContext` blocks are concatenated. Kits do not need to know about each other.
@@ -43,9 +43,8 @@ Walk through the `spec.yaml` sections:
 
 | Section | What it does |
 |---------|-------------|
-| `commands.install` | Runs `uv tool install ruff@latest` once at sandbox creation |
-| `commands.startup` | Ensures ruff is on PATH after any sandbox restart (idempotent) |
-| `commands.initFiles` | Copies `files/workspace/ruff.toml` to `/workspace/ruff.toml` |
+| `commands.install` | Runs `uv tool install ruff@latest` once at sandbox creation, as the agent user (`user: "1000"`) |
+| `files/workspace/ruff.toml` | Static config — copied as-is into the sandbox workspace at creation (no `initFiles` entry needed for static files) |
 | `network.allowedDomains` | Adds `pypi.org`, `files.pythonhosted.org`, `astral.sh` to the allowlist for the install step |
 | `agentContext` | Injected into the agent's system prompt — tells it to run `ruff check` and `ruff format` before every commit |
 

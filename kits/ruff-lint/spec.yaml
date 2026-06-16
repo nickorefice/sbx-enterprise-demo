@@ -10,19 +10,13 @@ description: |
 commands:
   install:
     # uv tool install runs once at sandbox creation time (not on every start).
+    # user: "1000" runs it as the agent user so the tool lands in the agent's home.
     - command: "uv tool install ruff@latest"
-      user: "1000"   # agent user
-
-  startup:
-    # Ensure ruff is on PATH after any restart (idempotent).
-    - command: |
-        ruff --version 2>/dev/null || uv tool install ruff@latest
       user: "1000"
 
-  initFiles:
-    # Copy the shared ruff config from the kit's files/ directory.
-    - source: files/workspace/ruff.toml
-      destination: /workspace/ruff.toml
+# The shared ruff config is deployed automatically: any file under files/workspace/
+# is copied as-is into the sandbox workspace. No initFiles entry is needed for static
+# files (initFiles is for files with inline, runtime-computed content).
 
 network:
   allowedDomains:
