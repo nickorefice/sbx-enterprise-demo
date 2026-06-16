@@ -1,0 +1,54 @@
+schemaVersion: "1"
+kind: mixin
+name: cage-policy
+displayName: Cage Policy (network + credential)
+description: |
+  Network allowlist and proxy-injected credential declared as reviewable code.
+  Apply this mixin to any sandbox to enforce a consistent network perimeter and
+  inject a service credential without exposing it to the agent.
+
+  NOTE: When org-level governance is active, org network rules take precedence
+  over the network block below. This mixin then serves as team-level documentation
+  of intent; the org policy is the actual enforcement boundary.
+
+network:
+  # Allowlist: only traffic to these domains is permitted.
+  allowedDomains:
+    - api.anthropic.com      # Claude API (required for claude-code agents)
+    - github.com             # source control
+    - api.github.com         # GitHub REST/GraphQL API
+    - objects.githubusercontent.com  # GitHub LFS / release assets
+    - registry-1.docker.io   # Docker Hub pulls
+    - production.cloudflare.docker.com
+
+  # Denylist overrides the allowlist for matched patterns.
+  deniedDomains:
+    - "*.dropbox.com"        # no exfil via consumer cloud storage
+    - "*.wetransfer.com"
+    - "pastebin.com"
+
+  # serviceDomains groups an upstream behind a logical service name so that
+  # serviceAuth can attach a credential to it.
+  serviceDomains:
+    api.example.com: example
+
+  # serviceAuth rewrites the named header on every outbound request to the
+  # mapped domain. The agent never sees the real token value.
+  serviceAuth:
+    example:
+      headerName: Authorization
+      valueFormat: "Bearer %s"
+
+credentials:
+  sources:
+    # "env" lists the host-side environment variable(s) that hold the secret.
+    # The proxy reads this value at request time; it is never written into the VM.
+    example:
+      env:
+        - EXAMPLE_API_KEY
+
+environment:
+  # proxyManaged variables are set to the literal string "proxy-managed" inside
+  # the VM. The proxy replaces the value on outbound requests automatically.
+  proxyManaged:
+    - EXAMPLE_API_KEY

@@ -1,0 +1,24 @@
+# ruff.toml — shared linting / formatting config injected by the ruff-lint kit.
+# Committed to the kit so every sandbox gets identical rules.
+
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+]
+ignore = [
+  "E501",   # line-too-long (handled by formatter)
+  "B008",   # function-call-in-default-argument
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"

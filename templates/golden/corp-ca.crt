@@ -1,0 +1,12 @@
+-----BEGIN CERTIFICATE-----
+# PLACEHOLDER — replace with your real corporate CA certificate before building.
+#
+# To obtain the real cert:
+#   macOS:  security find-certificate -a -p /Library/Keychains/System.keychain | grep -A 25 "Your Corp CA"
+#   Linux:  cat /etc/ssl/certs/<your-corp-ca>.pem
+#   ADCS:   certutil -ca.cert corp-ca.crt   (on a domain-joined Windows host)
+#
+# The file must be a PEM-encoded X.509 certificate (base64 between the
+# BEGIN/END CERTIFICATE markers). If your CA chain has an intermediate,
+# concatenate root + intermediate into this file, root last.
+-----END CERTIFICATE-----

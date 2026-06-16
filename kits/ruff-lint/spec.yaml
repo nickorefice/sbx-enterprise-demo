@@ -1,0 +1,38 @@
+schemaVersion: "1"
+kind: mixin
+name: ruff-lint
+displayName: Ruff Linter
+description: |
+  Installs the ruff Python linter/formatter and drops a shared ruff.toml into
+  the workspace. The agent is instructed via agentContext to run ruff before
+  every commit. Stackable with other mixins such as cage-policy.
+
+commands:
+  install:
+    # uv tool install runs once at sandbox creation time (not on every start).
+    - command: "uv tool install ruff@latest"
+      user: "1000"   # agent user
+
+  startup:
+    # Ensure ruff is on PATH after any restart (idempotent).
+    - command: |
+        ruff --version 2>/dev/null || uv tool install ruff@latest
+      user: "1000"
+
+  initFiles:
+    # Copy the shared ruff config from the kit's files/ directory.
+    - source: files/workspace/ruff.toml
+      destination: /workspace/ruff.toml
+
+network:
+  allowedDomains:
+    - pypi.org
+    - files.pythonhosted.org
+    - astral.sh   # uv/ruff release metadata
+
+agentContext: |
+  ## Linting
+  ruff is installed and configured. Before committing any Python changes:
+    ruff check .         # lint
+    ruff format .        # format
+  Config lives at /workspace/ruff.toml. Fix all errors before committing.
