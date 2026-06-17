@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sbx ls *)",
+      "Bash(sbx status *)",
+      "Bash(sbx exec *)",
+      "Bash(sbx create *)",
+      "Bash(git -C /Users/nickorefice/Documents/GitHub/sbx-enterprise-demo remote -v)"
+    ]
+  }
+}

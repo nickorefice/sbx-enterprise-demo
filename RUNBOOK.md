@@ -26,7 +26,7 @@ Confirm all of the following are in place **before** walking into the room.
 All commands that target a named sandbox use **`demo-agent`**.
 Workspace root: `~/Documents/GitHub/sbx-enterprise-demo`
 
-The sandbox is created in Beat 1 and torn down in the Reset section at the end of this document.
+The sandbox is created in Beat 1 — with the `cage-policy` kit, which Beat 5 relies on — and torn down in the Reset section at the end of this document.
 
 ---
 
@@ -65,9 +65,11 @@ Point to the `kits/` directory — that is where policy lives. Point to `service
 **SAY**: "Let's start at the bottom: the kernel. If this were a container, the agent and I would share a kernel. It's not."
 
 ```bash
-# Spin up the demo sandbox (this takes ~10 s on a warm cache)
-# `sbx create AGENT PATH` — claude is the agent, "." is the workspace (the repo root)
-sbx create --name demo-agent claude .
+# Spin up the demo sandbox (this takes ~10 s on a warm cache).
+# `sbx create [flags] AGENT PATH` — claude is the agent, "." is the workspace (repo root).
+# --kit applies the cage-policy mixin (proxy-injected credential) NOW, so Beat 5's
+# decoy works later. The kit declares no network rules, so it doesn't affect Beats 1–4.
+sbx create --name demo-agent --kit ./kits/cage-policy claude .
 ```
 
 **EXPECT**: A sandbox ID printed and a status line confirming the microVM is running.
@@ -176,15 +178,17 @@ sbx policy log
 **SAY**: "The agent only sees what you mount — the workspace you handed it, and nothing else on the host. The workspace is read-write, because the agent has to edit code to be useful. But your home directory, your other projects, your SSH keys — none of it is mounted, so to the agent it simply doesn't exist."
 
 ```bash
-# ▶ host-validate
-# `sbx exec` runs in the workspace by default — and the workspace is writable
-sbx exec demo-agent -- sh -c 'touch agent-can-write-here && pwd && ls agent-can-write-here'
+# The workspace is a read-write bind-mount that lives at the SAME absolute path
+# inside the VM as on your host. Note: `sbx exec` defaults to /home/agent/workspace,
+# which is a VM-local scratch dir — NOT the bind-mount — so a bare `touch` there
+# never reaches the host. Point -w at the workspace so writes land on the mount.
+WORKSPACE="$(pwd)" 
+sbx exec -w "$WORKSPACE" demo-agent -- sh -c 'touch agent-can-write-here && pwd && ls agent-can-write-here'
 ```
 
-**EXPECT**: The workspace's absolute path (the same path as on your host) and the new file listed — the agent **can** write here. In direct mode (the default) that file appears on your host instantly; that's exactly how the agent's edits and commits reach you. (Clean up: `rm agent-can-write-here`.)
+**EXPECT**: `pwd` prints the workspace's absolute path — the *same* path as on your host — and the new file is listed: the agent **can** write here. Because the workspace is a read-write bind-mount (the default, non-`--clone` mode), the file appears on your host instantly; that's exactly how the agent's edits and commits reach you. (Clean up: `rm agent-can-write-here`.)
 
 ```bash
-# ▶ host-validate
 # Now reach for something outside the workspace — your host home and its secrets
 sbx exec demo-agent -- ls /Users/nickorefice/.ssh
 ```
@@ -216,6 +220,8 @@ The agent isn't being *denied write access* to your SSH keys — it can't see th
 
 **SAY**: "This is the one that surprises people most. The agent needs to call an API — but the API key never enters the VM. Let me show you."
 
+> **Setup**: This beat needs the `cage-policy` kit, which is why Beat 1 created `demo-agent` with `--kit ./kits/cage-policy` — that's what declares `proxyManaged: [EXAMPLE_API_KEY]`. If the decoy below comes back empty, the kit wasn't applied: recreate with `sbx rm demo-agent && sbx create --name demo-agent --kit ./kits/cage-policy claude .`
+
 ```bash
 # Inside the VM, the environment variable holds a decoy value — not the real key
 sbx exec demo-agent -- sh -c 'echo $EXAMPLE_API_KEY'
@@ -227,17 +233,22 @@ sbx exec demo-agent -- sh -c 'echo $EXAMPLE_API_KEY'
 proxy-managed
 ```
 
+This is the provable-on-this-laptop moment: the agent sees only the decoy. The "but the call still works" half below needs a real token in the proxy and a real upstream — `api.example.com` is a placeholder, so treat the next two steps as **▶ host-validate** against a service you actually control.
+
 ```bash
-# But the API call still works — the proxy intercepts the request
-# and substitutes the real credential before it reaches the upstream
+# ▶ host-validate — give the proxy a real value to inject (any string for a local demo)
+sbx secret set demo-agent example -t "sk-demo-not-a-real-key"
+
+# The API call still works — the proxy intercepts the request and substitutes the
+# real credential before it reaches the upstream. Point this at a real service.
 sbx run demo-agent -- --dangerously-skip-permissions \
   "Call the example API at api.example.com and show me the full response"
 ```
 
-**EXPECT**: The agent reports a successful API response. The call went through even though the agent only ever saw `proxy-managed`.
+**EXPECT**: Against a real service, the agent reports a successful response — the call went through even though the agent only ever saw `proxy-managed`.
 
 ```bash
-# The proxy log shows the credential rewrite
+# ▶ host-validate — the proxy log shows the credential rewrite
 sbx policy log
 ```
 
@@ -348,8 +359,8 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 | Beat 1 — Separate Kernel | Validated live | `uname -srm` shows Darwin (host) vs Linux (sandbox); command updated from `uname -r` |
 | Beat 2 — Own Docker Engine | Validated live | Separate `docker ps` inventories confirmed |
 | Beat 3 — Default-Deny Network | Representative (updated) | Allowlist-source step changed to `sbx policy ls`; the 403 + policy-log flow is unchanged. Re-run to confirm output |
-| Beat 4 — Scoped Filesystem Access | Representative (updated) | Rewritten after docs review: the workspace is **read-write**; non-mounted host paths return `No such file or directory` (there is no `/host` read-only mount). Re-run on host to confirm exact paths/output |
-| Beat 5 — Proxy-Managed Credentials | Representative | Documented from original validated run; `api.example.com` must be reachable per policy |
+| Beat 4 — Scoped Filesystem Access | Validated live | Workspace is a read-write `virtiofs` bind-mount at the host's absolute path inside the VM; host-visible write confirmed. `sbx exec` defaults to `/home/agent/workspace` (VM-local, NOT the mount), so the write command now uses `-w "$WORKSPACE"` to land on the bind-mount. Non-mounted host paths return `No such file or directory` |
+| Beat 5 — Proxy-Managed Credentials | Representative (updated) | Decoy (`echo $EXAMPLE_API_KEY` → `proxy-managed`) is provable locally now that Beat 1 applies `--kit ./kits/cage-policy`. The "call still works" step needs a real token + a real upstream (`api.example.com` is a placeholder) |
 | Beat 6 — Governance & Wrap-Up | Representative | Org governance commands require org-level policy to be pre-configured |
 
-> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. **Representative (updated)** beats were revised after a docs/CLI review (Beats 3 and 4) and their new commands/outputs have not yet been re-run live — confirm them on a host before presenting. All require the named prerequisites in place (org governance configured, `EXAMPLE_API_KEY` set) and may need a dry run if conditions change between demo dates.
+> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. **Representative (updated)** beats were revised after a docs/CLI review (Beat 3) and their new commands/outputs have not yet been re-run live — confirm them on a host before presenting. All require the named prerequisites in place (org governance configured, `EXAMPLE_API_KEY` set) and may need a dry run if conditions change between demo dates.
