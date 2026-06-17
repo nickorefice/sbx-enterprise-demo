@@ -94,8 +94,11 @@ sbx run claude \
 **SAY**: "Same kit, loaded from a git URL. Any developer on any machine gets an identical setup. No 'works on my laptop' — the kit IS the setup."
 
 The git URL format supports:
-- A branch or tag: `git+https://...#ref=v1.2&dir=kits/ruff-lint` (pins to a released version)
-- The default branch: `git+https://...#dir=kits/ruff-lint` (always latest)
+- A branch, tag, or commit: `"git+https://...#ref=v1.2&dir=kits/ruff-lint"` (pins to a released version)
+- The default branch: `"git+https://...#dir=kits/ruff-lint"` (always latest)
+- `git+ssh://...` for private repos — uses your local SSH agent, Git credential helpers, and `.netrc`
+
+> **Quote the URL.** When you combine `#ref=...&dir=...`, the `&` would otherwise background the command in most shells. Always wrap the kit URL in quotes (as above).
 
 For reproducibility in CI or regulated environments, pin to a commit SHA or tag rather than the default branch.
 
