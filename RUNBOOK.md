@@ -185,15 +185,14 @@ sbx exec demo-agent -- sh -c 'touch agent-can-write-here && pwd && ls agent-can-
 
 ```bash
 # ▶ host-validate
-# Now reach for something outside the workspace — your host home and its secrets.
-# Substitute <you> with your real host username.
-sbx exec demo-agent -- ls /Users/<you>/.ssh
+# Now reach for something outside the workspace — your host home and its secrets
+sbx exec demo-agent -- ls /Users/nickorefice/.ssh
 ```
 
 **EXPECT**:
 
 ```
-ls: cannot access '/Users/<you>/.ssh': No such file or directory
+ls: cannot access '/Users/nickorefice/.ssh': No such file or directory
 ```
 
 The agent isn't being *denied write access* to your SSH keys — it can't see them at all. The only host paths inside the sandbox are the workspace(s) you chose to mount.
