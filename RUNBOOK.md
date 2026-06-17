@@ -73,16 +73,20 @@ sbx create --name demo-agent claude .
 **EXPECT**: A sandbox ID printed and a status line confirming the microVM is running.
 
 ```bash
-# Ask the sandbox what kernel it's running
-sbx exec demo-agent -- uname -r
+# Ask the sandbox what kernel it's running (-s name, -r release, -m arch)
+sbx exec demo-agent -- uname -srm
 ```
+
+**EXPECT**: `Linux 7.0.8 aarch64` (or similar) — the kernel name is **Linux**.
 
 ```bash
 # Compare against the host kernel
-uname -r
+uname -srm
 ```
 
-**EXPECT**: Two different strings. Even if the version numbers happen to be close (cloud hosts standardize kernel versions), the namespace isolation is verifiable — the sandbox cannot see the host's kernel modules or `/proc` tree.
+**EXPECT** (on a macOS host): `Darwin 23.6.0 arm64` (or similar) — the kernel name is **Darwin**.
+
+The contrast is the point: the host runs the **Darwin** (XNU) kernel, the sandbox runs a separate **Linux** kernel. Even on a Linux host — where both say `Linux` — the release strings differ and the namespace isolation still holds: the sandbox cannot see the host's kernel modules or `/proc` tree.
 
 ---
 
