@@ -120,6 +120,14 @@ docker ps
 
 **▸ Gov aside**: "Agent-launched containers don't appear in your host's container inventory. A supply-chain attack that tricks an agent into pulling a malicious image cannot reach host-level Docker. The blast radius is the VM."
 
+> **If they bring up Enhanced Container Isolation (ECI):** Agree — it's the right instinct. ECI swaps `runc` for the Sysbox runtime, puts every container in a Linux user namespace, and **blocks `docker.sock` bind-mounts by default** (with admin-curated exceptions). Then draw the distinctions:
+> - **Adoption:** ECI is Docker Business + admin-enabled via Settings Management — opt-in, not default. Most DD customers aren't running it, so their default posture is still one shared daemon where socket access = control of the host VM. sbx is per-agent isolated **by default**, no Business tier or fleet rollout required.
+> - **Shared kernel vs. separate kernel:** ECI isolates containers *within the single Docker Desktop VM* — they still share that one kernel (Beat 1). sbx gives each agent its **own microVM and kernel**; VM-kernel exploits in scope for ECI are structurally irrelevant here.
+> - **Blocks the socket vs. full Docker, safely:** ECI's answer is to *block* the socket, which can break agents that genuinely need Docker. sbx lets the agent use Docker **unrestricted** against its **own throwaway daemon** — full capability *and* contained.
+> - **Scope:** ECI hardens container → host-VM isolation. sbx is the full cage per agent — own kernel + own dockerd + default-deny egress + read-only host FS + proxy-injected credentials — and `sbx rm` wipes all of it.
+>
+> **Land it:** "ECI hardens your developers' interactive containers. sbx is the purpose-built cage for autonomous agents. They're complementary."
+
 ---
 
 ## Beat 3 — Layer 3: Default-Deny Network (5 min)
