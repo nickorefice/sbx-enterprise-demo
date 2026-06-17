@@ -124,7 +124,7 @@ docker ps
 > - **Adoption:** ECI is Docker Business + admin-enabled via Settings Management — opt-in, not default. Most DD customers aren't running it, so their default posture is still one shared daemon where socket access = control of the host VM. sbx is per-agent isolated **by default**, no Business tier or fleet rollout required.
 > - **Shared kernel vs. separate kernel:** ECI isolates containers *within the single Docker Desktop VM* — they still share that one kernel (Beat 1). sbx gives each agent its **own microVM and kernel**; VM-kernel exploits in scope for ECI are structurally irrelevant here.
 > - **Blocks the socket vs. full Docker, safely:** ECI's answer is to *block* the socket, which can break agents that genuinely need Docker. sbx lets the agent use Docker **unrestricted** against its **own throwaway daemon** — full capability *and* contained.
-> - **Scope:** ECI hardens container → host-VM isolation. sbx is the full cage per agent — own kernel + own dockerd + default-deny egress + read-only host FS + proxy-injected credentials — and `sbx rm` wipes all of it.
+> - **Scope:** ECI hardens container → host-VM isolation. sbx is the full cage per agent — own kernel + own dockerd + default-deny egress + scoped filesystem (you choose what's mounted, read-write or read-only) + proxy-injected credentials — and `sbx rm` wipes all of it.
 >
 > **Land it:** "ECI hardens your developers' interactive containers. sbx is the purpose-built cage for autonomous agents. They're complementary."
 
@@ -171,33 +171,45 @@ sbx policy log
 
 ---
 
-## Beat 4 — Layer 4: Read-Only Host Filesystem (3 min)
+## Beat 4 — Layer 4: Scoped Filesystem Access (3 min)
 
-**SAY**: "The agent can read your project files — that's how it does useful work. But it cannot write outside its workspace. The host filesystem is mounted read-only."
+**SAY**: "The agent only sees what you mount — the workspace you handed it, and nothing else on the host. The workspace is read-write, because the agent has to edit code to be useful. But your home directory, your other projects, your SSH keys — none of it is mounted, so to the agent it simply doesn't exist."
 
 ```bash
-# The agent sees the host project tree
-sbx exec demo-agent -- ls /host
+# ▶ host-validate
+# `sbx exec` runs in the workspace by default — and the workspace is writable
+sbx exec demo-agent -- sh -c 'touch agent-can-write-here && pwd && ls agent-can-write-here'
 ```
 
-**EXPECT**: The agent's `/host` mount shows your project directories — the same tree you see in `ls` on the host.
+**EXPECT**: The workspace's absolute path (the same path as on your host) and the new file listed — the agent **can** write here. In direct mode (the default) that file appears on your host instantly; that's exactly how the agent's edits and commits reach you. (Clean up: `rm agent-can-write-here`.)
 
 ```bash
-# Attempting to write outside the workspace fails
-sbx exec demo-agent -- touch /host/Documents/evil.txt
+# ▶ host-validate
+# Now reach for something outside the workspace — your host home and its secrets.
+# Substitute <you> with your real host username.
+sbx exec demo-agent -- ls /Users/<you>/.ssh
 ```
 
 **EXPECT**:
 
 ```
-touch: cannot touch '/host/Documents/evil.txt': Read-only file system
+ls: cannot access '/Users/<you>/.ssh': No such file or directory
 ```
+
+The agent isn't being *denied write access* to your SSH keys — it can't see them at all. The only host paths inside the sandbox are the workspace(s) you chose to mount.
 
 ---
 
-**SAY**: "Permission denied. The host FS is mounted read-only. The agent can read your code to do its job. It cannot write back — not to your home directory, not to other projects, not anywhere on the host."
+**SAY**: "Scoped access. The agent writes to the workspace you gave it — that's the job. Everything else on your host was never mounted, so there's nothing to read, modify, or exfiltrate. And if you want to give it reference material it must *not* change, you mount that read-only:"
 
-**▸ Gov aside**: "An agent with write access to your host filesystem could modify CI configs, inject backdoors into other projects, or corrupt system files. Read-only eliminates that entire class of risk. The only writable surface is the agent's own workspace inside the VM."
+```bash
+# Illustrative — mount extra context read-only by appending :ro (not run in this demo)
+#   sbx run claude . /path/to/reference-docs:ro
+```
+
+**▸ Gov aside**: "Two controls. Per-run: you decide exactly which paths a sandbox mounts, and whether each is read-write or read-only (`:ro`). Org-wide: filesystem governance rules are an **allowlist of which host paths may be mounted at all** — they don't auto-mount anything into any sandbox. A path being 'allowed' in the Admin Console just means a developer is *permitted* to mount it; a sandbox still only ever gets the workspace(s) passed at launch. So an agent can never reach a path you didn't explicitly mount and the org didn't permit."
+
+> **Reminder — `--clone` flips the write story:** In clone mode the agent works on a private clone *inside* the VM, with your host working tree mounted read-only (at `/run/sandbox/source`), so its writes never touch your host files. Its commits come back to you through the `sandbox-<name>` git remote instead.
 
 ---
 
@@ -278,7 +290,7 @@ sbx ls
 
 ---
 
-**SAY**: "Five layers: separate kernel, separate Docker, network cage, read-only filesystem, and proxy-managed credentials. Each verifiable. Each auditable. Together they let you hand an AI agent the keys to your codebase without handing it the keys to your infrastructure."
+**SAY**: "Five layers: separate kernel, separate Docker, network cage, scoped filesystem access, and proxy-managed credentials. Each verifiable. Each auditable. Together they let you hand an AI agent the keys to your codebase without handing it the keys to your infrastructure."
 
 **▸ Gov aside**: "Org governance is the sixth layer: policy-as-code that applies to every sandbox in your org, enforced by the proxy at the network level, not bypassable by individual developers changing their kit spec. It gives your security team a single control plane for the entire AI agent fleet."
 
@@ -334,11 +346,11 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 | Beat | Status | Notes |
 |---|---|---|
 | Beat 0 — Prep & Context | Validated live | Repo structure is stable |
-| Beat 1 — Separate Kernel | Validated live | `uname -r` output confirmed divergent |
+| Beat 1 — Separate Kernel | Validated live | `uname -srm` shows Darwin (host) vs Linux (sandbox); command updated from `uname -r` |
 | Beat 2 — Own Docker Engine | Validated live | Separate `docker ps` inventories confirmed |
-| Beat 3 — Default-Deny Network | Validated live | Proxy 403 and policy log confirmed |
-| Beat 4 — Read-Only Host FS | Validated live | `touch /host/...` returns read-only error |
+| Beat 3 — Default-Deny Network | Representative (updated) | Allowlist-source step changed to `sbx policy ls`; the 403 + policy-log flow is unchanged. Re-run to confirm output |
+| Beat 4 — Scoped Filesystem Access | Representative (updated) | Rewritten after docs review: the workspace is **read-write**; non-mounted host paths return `No such file or directory` (there is no `/host` read-only mount). Re-run on host to confirm exact paths/output |
 | Beat 5 — Proxy-Managed Credentials | Representative | Documented from original validated run; `api.example.com` must be reachable per policy |
 | Beat 6 — Governance & Wrap-Up | Representative | Org governance commands require org-level policy to be pre-configured |
 
-> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. They require the named prerequisites to be in place (org governance configured, `EXAMPLE_API_KEY` set) and may need a dry run if those conditions change between demo dates.
+> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. **Representative (updated)** beats were revised after a docs/CLI review (Beats 3 and 4) and their new commands/outputs have not yet been re-run live — confirm them on a host before presenting. All require the named prerequisites in place (org governance configured, `EXAMPLE_API_KEY` set) and may need a dry run if conditions change between demo dates.

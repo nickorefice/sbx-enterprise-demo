@@ -1,6 +1,6 @@
 # sbx Enterprise Demo
 
-A polished, end-to-end demo for **Docker Sandboxes (`sbx`)** — the tool that runs AI coding agents inside isolated microVMs with separate kernels, default-deny networking, read-only host filesystem access, and proxy-managed credentials that never enter the VM.
+A polished, end-to-end demo for **Docker Sandboxes (`sbx`)** — the tool that runs AI coding agents inside isolated microVMs with separate kernels, default-deny networking, scoped filesystem access (you control what's mounted, read-write or read-only), and proxy-managed credentials that never enter the VM.
 
 ---
 
