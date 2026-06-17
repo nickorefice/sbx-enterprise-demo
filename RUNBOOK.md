@@ -150,11 +150,11 @@ Blocked by network policy: domain example.com
 Now show where the allowlist comes from:
 
 ```bash
-# The allowed domains are declared as reviewable code in a spec.yaml
-cat kits/cage-policy/spec.yaml
+# The active network rules and their origin (org, system, or default-deny)
+sbx policy ls
 ```
 
-**EXPECT**: The `network.allowedDomains` block showing only the specific domains the team has explicitly approved — `api.anthropic.com`, `github.com`, `api.github.com`, Docker Hub, and a handful of others.
+**EXPECT**: The approved domains — `api.anthropic.com`, `github.com`, Docker Hub, and a handful of others — each tagged with its origin. Under org governance these are set centrally (Docker Admin Console / Governance API), apply to every sandbox uniformly, and can't be overridden locally; everything not on the list falls through to default-deny.
 
 ```bash
 # The proxy log shows every blocked attempt, with timestamps
@@ -165,9 +165,9 @@ sbx policy log
 
 ---
 
-**SAY**: "Default deny. The agent tried to reach the internet — blocked. You declare the allowlist in a `spec.yaml` file that lives in git and gets reviewed like code. The policy log is your audit trail."
+**SAY**: "Default deny. The agent tried to reach the internet — blocked. The allowlist is set by org governance — centrally, by your security team — and everything else is denied by default. The policy log is your audit trail."
 
-**▸ Gov aside**: "No data exfiltration via `curl`. No C2 callbacks. Egress is an explicit opt-in, not the default. Because the policy is in `kits/cage-policy/spec.yaml`, it goes through your normal pull-request workflow — any change to the allowlist is a diff that your security team can review and approve before it takes effect."
+**▸ Gov aside**: "No data exfiltration via `curl`. No C2 callbacks. Egress is an explicit opt-in, not the default. The allowlist lives in org governance — the Docker Admin Console or Governance API — so it applies to every sandbox uniformly and cannot be overridden by a developer or a kit. Changes go through your governed workflow for your security team to review before they take effect. (Add-on 02 shows the flip side: what *does* belong in a reviewable kit — credential injection.)"
 
 ---
 

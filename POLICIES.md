@@ -1,9 +1,19 @@
 # Network and Credential Policies
 
-This document describes the security model enforced by the `cage-policy` mixin and the surrounding
-sandbox infrastructure. It is intended for security engineers, platform teams, and reviewers who
-need to understand what traffic an agent sandbox is permitted to initiate and how credentials are
-delivered without exposing them to agent code.
+This document describes the sandbox security model: what traffic an agent sandbox is permitted to
+initiate (governed at the **org** level) and how credentials are delivered without exposing them to
+agent code (declared in the **`cage-policy` kit**). It is intended for security engineers, platform
+teams, and reviewers.
+
+> **Division of responsibility (read this first):**
+> - **Network and filesystem access** are owned by **org-level governance** (Docker Admin Console /
+>   Governance API). When governance is active it **replaces** any kit- or sandbox-local rules.
+> - **Credential injection** is owned by the **kit** (`kits/cage-policy/spec.yaml`). Org governance
+>   does not manage it, so it correctly lives in reviewable kit code.
+>
+> The kits in this repo therefore declare **no** network allow/deny rules — in a governed org they
+> would be silently overridden noise. The network model below describes what to configure in **org
+> governance**.
 
 ---
 
@@ -13,7 +23,7 @@ Every sandbox created through the `sbx` CLI operates under a **default-deny outb
 Unless a domain appears on an explicit allowlist, all TCP connections originating inside the
 sandbox are rejected at the proxy layer before they reach the network. HTTP and HTTPS requests
 that are blocked receive an HTTP 403 response whose body identifies the blocking rule and its
-origin (kit-level, org-level, or system-level policy).
+origin (org-level or system-level policy).
 
 This approach inverts the conventional model — rather than blocking known-bad destinations, only
 known-good destinations are reachable. The practical effect is that an agent operating inside the
@@ -25,39 +35,44 @@ The policy is enforced transparently at the proxy level: the agent process insid
 ordinary TCP connection failures for disallowed destinations and does not receive any signal that a
 policy layer (as opposed to a routing failure) caused the refusal.
 
+The standard demo proves this live in **RUNBOOK Beat 3**.
+
 ---
 
-## 2. Allowed Domains (`kits/cage-policy/spec.yaml`)
+## 2. Network Access Is Governed at the Org Level
 
-The `cage-policy` mixin declares its allowlist under `network.allowedDomains`. Each entry is
-justified below.
+Network access is **not** declared in a kit in this repo. In a governed organization, org rules
+replace kit network rules entirely, so a kit allowlist is at best documentation and at worst a
+false sense of enforcement. Configure the allowlist in **org governance** (Docker Admin Console or
+Governance API) so it applies uniformly to every sandbox and cannot be overridden locally.
+
+### 2.1 Recommended Org Allowlist for these demo services
+
+The following is the set of domains a Claude Code agent working in this repo typically needs. Use it
+as the starting point for the **org-level** allowlist — not as a kit declaration.
 
 | Domain | Purpose | Rationale |
 |---|---|---|
-| `api.anthropic.com` | Claude API | Claude Code agents must be able to reach the Anthropic API to receive instructions and return results. Blocking this domain would render the agent non-functional. |
-| `github.com` | Source control (HTTPS Git, web) | The primary use-case of the demo is for the agent to read and write code in a GitHub repository. `git push`, `git fetch`, and `gh` CLI operations all connect here. |
-| `api.github.com` | GitHub REST and GraphQL API | The `gh` CLI uses the REST API to open pull requests, query issue trackers, and inspect CI status. Without this domain the agent cannot complete tasks that involve PR workflows. |
-| `objects.githubusercontent.com` | GitHub LFS and release assets | Large binary objects (LFS pointers, release tarballs) are served from this CDN rather than `github.com` itself. Go module proxies that resolve GitHub-hosted modules may also pull from here. |
-| `registry-1.docker.io` | Docker Hub image registry | The demo services (`vote`, `result`, `gateway`) may be built and run as containers during the agent's task execution. Pulling base images requires access to Docker Hub's primary registry API endpoint. |
-| `production.cloudflare.docker.com` | Docker Hub CDN (layer blobs) | Docker Hub stores image layer blobs on Cloudflare's CDN. Even when `registry-1.docker.io` is reachable, layer pulls will fail unless this CDN domain is also allowed. |
+| `api.anthropic.com` | Claude API | Claude Code agents must reach the Anthropic API to receive instructions and return results. Blocking this renders the agent non-functional. |
+| `github.com` | Source control (HTTPS Git, web) | The agent reads and writes code in a GitHub repository. `git push`, `git fetch`, and `gh` CLI operations connect here. |
+| `api.github.com` | GitHub REST/GraphQL API | The `gh` CLI uses the REST API to open pull requests, query issues, and inspect CI status. |
+| `objects.githubusercontent.com` | GitHub LFS and release assets | LFS pointers and release tarballs are served from this CDN. Go module proxies resolving GitHub-hosted modules may also pull from here. |
+| `registry-1.docker.io` | Docker Hub image registry | The demo services may be built and run as containers; pulling base images requires Docker Hub's registry API endpoint. |
+| `production.cloudflare.docker.com` | Docker Hub CDN (layer blobs) | Image layer blobs are served from Cloudflare's CDN; layer pulls fail without it even when `registry-1.docker.io` is reachable. |
+| `pypi.org`, `files.pythonhosted.org`, `astral.sh` | Python tooling | Needed only if a kit installs Python tooling at runtime (e.g. `ruff-lint`). Sidestep entirely by pre-baking tools into the golden template (add-on 03). |
 
-### Denied Domains (Explicit Denylist)
+### 2.2 Egress to Avoid
 
-The following domains are explicitly denied even if a broader allowlist rule would otherwise permit
-them. Explicit denials take precedence over the allowlist.
-
-| Domain Pattern | Reason |
-|---|---|
-| `*.dropbox.com` | Consumer cloud-storage services are a common exfiltration vector. An agent must not be able to upload repository contents or secrets to Dropbox. |
-| `*.wetransfer.com` | Same rationale as Dropbox. WeTransfer provides unauthenticated large-file transfer and is frequently abused for data exfiltration. |
-| `pastebin.com` | Pastebin is used to exfiltrate text data (credentials, source code) and to host second-stage payloads. Blocking it removes both attack surfaces. |
+Consumer file-sharing and paste services are common exfiltration vectors and should be denied at the
+org level (or simply excluded from the allowlist under default-deny): `*.dropbox.com`,
+`*.wetransfer.com`, `pastebin.com`, and similar.
 
 ---
 
-## 3. Proxy-Managed Credential Model
+## 3. Proxy-Managed Credential Model (`kits/cage-policy/spec.yaml`)
 
-Credentials are never written into the VM image and are never visible as their real values inside
-the sandbox. The delivery chain works as follows.
+This is what the kit *does* declare. Credentials are never written into the VM image and are never
+visible as their real values inside the sandbox. The delivery chain works as follows.
 
 ### 3.1 Host Keychain → Sandbox Secret Store
 
@@ -67,9 +82,8 @@ On the host, an operator stores the real credential in the `sbx` secret store:
 sbx secret set <sandbox-name> example -t "$(printenv EXAMPLE_API_KEY)"
 ```
 
-This writes the token into the host-side secret store. The token is associated with the logical
-service name `example` (matching the `serviceDomains` and `serviceAuth` configuration in
-`spec.yaml`).
+This writes the token into the host-side secret store, associated with the logical service name
+`example` (matching the `serviceDomains` and `serviceAuth` configuration in `spec.yaml`).
 
 ### 3.2 VM Decoy Value
 
@@ -106,6 +120,11 @@ The outbound request that reaches `api.example.com` carries a correctly formed
 `Authorization: Bearer <real-token>` header. The agent process never constructed that header with
 the real value; the proxy injected it transparently.
 
+> Note: `serviceDomains` and `serviceAuth` live under the `network:` block in `spec.yaml`, but they
+> are **credential plumbing**, not a network cage — they tell the proxy *which upstream* to attach
+> the credential to and *how*. They do not allow or deny traffic; egress remains governed by org
+> policy.
+
 ### 3.4 Security Properties
 
 This model provides several meaningful guarantees:
@@ -121,52 +140,20 @@ This model provides several meaningful guarantees:
 
 ---
 
-## 4. Governance vs Kit-Level Policy
+## 4. Org Governance vs Kit Scope
 
-### Kit-Level Policy (Team Intent)
+| Concern | Where it lives | Owner | Overridable by a kit? |
+|---|---|---|---|
+| Network egress (allow/deny) | Org governance (Admin Console / API) | Security / IT | No — org rules replace kit/local rules |
+| Filesystem access (mountable host paths) | Org governance | Security / IT | No |
+| Credential injection (which secret, which service, which header) | `kits/cage-policy/spec.yaml` | Team / platform | N/A — org governance does not manage credentials |
+| Tooling, config files, agent instructions | Kits (e.g. `ruff-lint`) | Team / platform | N/A |
 
-The `network` block in `kits/cage-policy/spec.yaml` represents a team's stated intent for what
-network access their sandboxes need. It is reviewable as source code — any change to the allowlist
-goes through a pull request and is subject to normal code review.
-
-This is valuable: it creates a human-readable, version-controlled record of why each domain is
-permitted, and it prevents accidental scope creep from ad-hoc `sbx policy allow` invocations
-that never get documented.
-
-### Org-Level Governance (Real Enforcement Boundary)
-
-When an organization enables sandbox governance, org administrators define network rules at the
-org level through the `sbx` control plane. **Org-level rules take precedence over kit-level
-network declarations.**
-
-This means:
-
-- A kit that declares `allowedDomains: ["*"]` cannot bypass an org-level domain restriction.
-- A kit that allows `api.example.com` will have that allowance silently narrowed if the org policy
-  does not permit that domain.
-- Conversely, an org-level allowance does not automatically propagate into kits; kits still need
-  to declare their required domains so that the least-privilege principle is respected per sandbox.
-
-In a governed organization the correct mental model is:
-
-```
-effective_allowlist = kit_allowlist ∩ org_allowlist
-effective_denylist  = kit_denylist  ∪ org_denylist
-```
-
-The kit policy serves as documentation and as a least-privilege declaration. The org policy is the
-actual enforcement boundary that cannot be overridden by agent activity or kit configuration.
-
-### Practical Guidance for Reviewers
-
-When reviewing a kit that adds domains to `allowedDomains`:
-
-1. Confirm the org-level policy would permit the domain before assuming the kit allowance is
-   effective.
-2. Treat the kit's `allowedDomains` list as a maximum — sandboxes using the kit will receive
-   access to at most those domains, subject to further restriction by org policy.
-3. Any domain added to a kit's allowlist should be accompanied by a comment explaining the
-   business justification, as shown in `kits/cage-policy/spec.yaml`.
+When organization governance is active, the documentation is explicit: "local rules are no longer
+evaluated and can't be used to supplement or override the organization policy." This is why the
+network cage belongs at the org level and credential wiring belongs in the kit — each is owned where
+it is actually enforced. Changes to the org allowlist go through org-level review; changes to
+credential wiring go through pull-request review on the `kits/` directory (gate it with CODEOWNERS).
 
 ---
 
@@ -180,26 +167,21 @@ The `sbx` CLI exposes two commands for inspecting network policy state and conne
 sbx policy ls
 ```
 
-Lists every rule currently active for the sandbox, including its origin (kit, org, or system), its
-type (allow or deny), and whether it is suppressed by a higher-priority rule. Example output:
+Lists every rule currently active for the sandbox, including its origin (org or system) and type
+(allow or deny). In a governed org, network rules show `org` as their origin:
 
 ```
 RULE                                    TYPE    ORIGIN    STATUS
-api.anthropic.com                       allow   kit       active
-github.com                              allow   kit       active
-api.github.com                          allow   kit       active
-objects.githubusercontent.com           allow   kit       active
-registry-1.docker.io                    allow   kit       active
-production.cloudflare.docker.com        allow   kit       active
-*.dropbox.com                           deny    kit       active
-*.wetransfer.com                        deny    kit       active
-pastebin.com                            deny    kit       active
-api.example.com                         allow   kit       active (credential-rewrite)
-suspicious-domain.example.net           allow   kit       SUPPRESSED by org deny
+api.anthropic.com                       allow   org       active
+github.com                              allow   org       active
+api.github.com                          allow   org       active
+registry-1.docker.io                    allow   org       active
+*.dropbox.com                           deny    org       active
+api.example.com                         allow   org       active (credential-rewrite via kit)
 ```
 
-A `SUPPRESSED` status indicates the kit rule exists but org policy has overridden it — useful for
-identifying kit rules that are not having their intended effect.
+The `credential-rewrite` annotation on `api.example.com` reflects the kit's `serviceAuth` wiring;
+the allow itself is an org-level decision.
 
 ### 5.2 `sbx policy log` — Connection History
 
@@ -212,16 +194,15 @@ the agent needs is reachable, and for diagnosing unexpected blocks. Example outp
 
 ```
 TIMESTAMP            HOST                                    RULE                        RESULT
-2026-06-16T14:01:03  api.anthropic.com                       kit:allow                   allowed
-2026-06-16T14:01:04  api.github.com                          kit:allow                   allowed
-2026-06-16T14:01:07  api.example.com                         kit:allow (credential-rewrite) allowed
+2026-06-16T14:01:03  api.anthropic.com                       org:allow                   allowed
+2026-06-16T14:01:04  api.github.com                          org:allow                   allowed
+2026-06-16T14:01:07  api.example.com                         org:allow (cred-rewrite)    allowed
 2026-06-16T14:02:11  evil.exfil.example.net                  default-deny                blocked
-2026-06-16T14:02:45  www.dropbox.com                         kit:deny (*.dropbox.com)    blocked
+2026-06-16T14:02:45  www.dropbox.com                         org:deny (*.dropbox.com)    blocked
 ```
 
-The `RULE` column identifies which rule produced the outcome. For blocks, the `RESULT` will be
-`blocked` and the rule column will identify either an explicit deny entry or `default-deny`
-(meaning no allow rule matched).
+The `RULE` column identifies which rule produced the outcome. For blocks, the rule column identifies
+either an explicit deny entry or `default-deny` (meaning no allow rule matched).
 
 ### 5.3 Interpreting Blocks
 
@@ -236,15 +217,14 @@ Blocked by network policy: domain <host>
 
 | `origin` value | Meaning | Recommended action |
 |---|---|---|
-| *(absent)* | Default-deny; domain has no matching allow rule | Add domain to kit allowlist if legitimate; escalate to org admin if org-level permit is needed |
-| `local policy` | Explicit kit-level deny rule matched | Review kit `deniedDomains`; override via `sbx policy allow <domain>` if access is legitimate |
-| `corporate policy` | Org-level rule is blocking the domain | Contact your platform or security team — this cannot be overridden at the kit or sandbox level |
+| *(absent)* | Default-deny; domain has no matching allow rule | Add the domain to the **org** allowlist if legitimate |
+| `corporate policy` / `org` | Org-level rule is allowing/blocking the domain | Adjust the rule in the Admin Console or Governance API — it cannot be overridden at the kit or sandbox level |
 | `system policy` | System-enforced rule | Contact your infrastructure team |
 
 ---
 
 ## 6. References
 
-- Kit source: `kits/cage-policy/spec.yaml`
+- Credential kit source: `kits/cage-policy/spec.yaml`
 - Sandbox CLI reference: `sbx --help`
-- Org governance documentation: consult your organization's `sbx` admin panel
+- Org governance: Docker Admin Console / Governance API (`docs.docker.com/ai/sandboxes/governance/`)

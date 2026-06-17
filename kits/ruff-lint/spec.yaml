@@ -17,12 +17,12 @@ commands:
 # The shared ruff config is deployed automatically: any file under files/workspace/
 # is copied as-is into the sandbox workspace. No initFiles entry is needed for static
 # files (initFiles is for files with inline, runtime-computed content).
-
-network:
-  allowedDomains:
-    - pypi.org
-    - files.pythonhosted.org
-    - astral.sh   # uv/ruff release metadata
+#
+# No network block on purpose: in a governed org, org-level governance owns
+# network access and overrides kit network rules, so a kit allowlist is noise.
+# The uv/ruff install needs pypi.org + files.pythonhosted.org + astral.sh
+# reachable — provide that via org governance, or pre-bake ruff into the golden
+# template (add-on 03) for a zero-network install.
 
 agentContext: |
   ## Linting

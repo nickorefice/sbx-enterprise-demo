@@ -1,34 +1,22 @@
 schemaVersion: "1"
 kind: mixin
 name: cage-policy
-displayName: Cage Policy (network + credential)
+displayName: Proxy-Injected Credential (as code)
 description: |
-  Network allowlist and proxy-injected credential declared as reviewable code.
-  Apply this mixin to any sandbox to enforce a consistent network perimeter and
-  inject a service credential without exposing it to the agent.
+  Declares a proxy-injected service credential as reviewable code: the real
+  secret stays in the host keychain, the agent only ever sees the decoy string
+  "proxy-managed", and the proxy attaches the real token to outbound requests.
 
-  NOTE: When org-level governance is active, org network rules take precedence
-  over the network block below. This mixin then serves as team-level documentation
-  of intent; the org policy is the actual enforcement boundary.
+  Network allow/deny rules are intentionally NOT declared here. In any governed
+  enterprise, org-level governance owns network (and filesystem) access and
+  overrides kit-level network rules entirely — so a kit allowlist is just noise.
+  Put the network cage in org governance; keep credential injection — which org
+  governance does NOT manage — in the kit.
 
 network:
-  # Allowlist: only traffic to these domains is permitted.
-  allowedDomains:
-    - api.anthropic.com      # Claude API (required for claude-code agents)
-    - github.com             # source control
-    - api.github.com         # GitHub REST/GraphQL API
-    - objects.githubusercontent.com  # GitHub LFS / release assets
-    - registry-1.docker.io   # Docker Hub pulls
-    - production.cloudflare.docker.com
-
-  # Denylist overrides the allowlist for matched patterns.
-  deniedDomains:
-    - "*.dropbox.com"        # no exfil via consumer cloud storage
-    - "*.wetransfer.com"
-    - "pastebin.com"
-
-  # serviceDomains groups an upstream behind a logical service name so that
-  # serviceAuth can attach a credential to it.
+  # serviceDomains + serviceAuth below are credential PLUMBING, not a network
+  # cage: they tell the proxy which upstream to attach the credential to, and how.
+  # serviceDomains groups an upstream behind a logical service name.
   serviceDomains:
     api.example.com: example
 

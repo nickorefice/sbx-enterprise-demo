@@ -125,13 +125,13 @@ If the CA cert test is not representative in the demo environment (because `api.
 
 ## Gov Aside
 
-**▸ Gov aside**: "Combine this with kit-level network policy (add-on 02) and org governance and you have defense in depth: the image is the compliance baseline, the kit is the runtime cage, org policy is the enforcement backstop."
+**▸ Gov aside**: "Combine this with kit-level credential injection (add-on 02) and org governance and you have defense in depth: the image is the compliance baseline, the kit injects credentials the agent never sees, org policy is the network/filesystem enforcement boundary."
 
 | Layer | Mechanism | Who owns it |
 |-------|-----------|-------------|
 | Golden template | Docker image in registry | Platform engineering |
-| Kit network cage | `spec.yaml` in git repo | Team or project |
-| Org governance | Org-level sbx policy | Security / IT |
+| Kit credential injection | `spec.yaml` in git repo | Team or project |
+| Org governance (network + filesystem) | Org-level sbx policy | Security / IT |
 
 Each layer can be updated independently. Updating the org policy does not require rebuilding the image. Updating the image does not require changing kit files. They compose without coupling.
 

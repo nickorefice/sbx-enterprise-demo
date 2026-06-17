@@ -10,7 +10,7 @@
 
 - `sbx` CLI installed and authenticated on your host machine
 - The `sbx-enterprise-demo` repo checked out locally (`github.com/nickorefice/sbx-enterprise-demo`)
-- Network access to `pypi.org` and `astral.sh` (for the ruff install step inside the sandbox) — or use the golden template (add-on 03) which pre-installs ruff
+- The sandbox able to reach `pypi.org`, `files.pythonhosted.org`, and `astral.sh` for the ruff install — granted via **org governance** (network access is org-owned, not declared in the kit), or sidestep it entirely with the golden template (add-on 03), which pre-installs ruff for a zero-network install
 - `services/vote/app.py` present and containing Python code for ruff to check
 
 ---
@@ -23,7 +23,7 @@ A kit mixin does three things:
 2. **Drops configuration files** into the workspace — any file under the kit's `files/workspace/` directory is copied as-is into the sandbox, so the agent and all tools share identical settings
 3. **Instructs the agent** via `agentContext` — a block of text injected into the agent's system prompt at startup, so the agent knows what tools are available and how to use them
 
-Kits are composable: you can pass `--kit` multiple times to a single `sbx run` command. Each kit's network allowlist is merged, its install commands run sequentially, and its `agentContext` blocks are concatenated. Kits do not need to know about each other.
+Kits are composable: you can pass `--kit` multiple times to a single `sbx run` command. Their install commands run sequentially, their files are layered into the workspace, and their `agentContext` blocks are concatenated. Kits do not need to know about each other. (Network access isn't a kit concern in a governed org — it's owned by org governance — which is why neither kit here declares an allowlist.)
 
 ---
 
@@ -45,8 +45,8 @@ Walk through the `spec.yaml` sections:
 |---------|-------------|
 | `commands.install` | Runs `uv tool install ruff@latest` once at sandbox creation, as the agent user (`user: "1000"`) |
 | `files/workspace/ruff.toml` | Static config — copied as-is into the sandbox workspace at creation (no `initFiles` entry needed for static files) |
-| `network.allowedDomains` | Adds `pypi.org`, `files.pythonhosted.org`, `astral.sh` to the allowlist for the install step |
 | `agentContext` | Injected into the agent's system prompt — tells it to run `ruff check` and `ruff format` before every commit |
+| *(no `network` block)* | Network access is owned by org governance, which overrides kit rules — so a kit allowlist would be noise. The install needs `pypi.org`/`astral.sh` reachable via org policy, or use the golden template (add-on 03). |
 
 **SAY**: "A mixin kit installs ruff, drops a shared config into the workspace, and tells the agent to run it before committing. The agent gets the instruction via agentContext — no prompting required."
 
@@ -56,10 +56,10 @@ Point out the `ruff.toml` configuration: `line-length = 100`, `target-version = 
 
 ## Step 2: Stack Two Kits
 
-Combine the network cage from `cage-policy` with the linting from `ruff-lint` in a single command:
+Combine the credential injection from `cage-policy` with the linting from `ruff-lint` in a single command:
 
 ```bash
-# ▶ host-validate — network cage + linting in one command
+# ▶ host-validate — credential injection + linting in one command
 sbx run claude \
   --kit ./kits/cage-policy \
   --kit ./kits/ruff-lint \
@@ -69,11 +69,13 @@ sbx run claude \
 
 **EXPECT**: The agent runs `ruff check services/vote/app.py`, fixes any violations, runs `ruff format`, and commits the result. If the file is already clean, it will say so and make no commit.
 
-**SAY**: "Two kits, stacked. The network cage from cage-policy, the linting from ruff-lint. Neither knows about the other. The allowlists merge, the install commands run in order, the agentContext blocks concatenate. Compose like LEGO."
+**SAY**: "Two kits, stacked. The credential wiring from cage-policy, the linting from ruff-lint. Neither knows about the other. The install commands run in order, the files layer together, the agentContext blocks concatenate. Compose like LEGO."
 
 Highlight what the merge produces:
-- **Network**: vote service can reach `api.anthropic.com`, `github.com`, `pypi.org`, `astral.sh` — the union of both kits' allowlists, minus the cage-policy denylists
-- **Agent instructions**: the agent sees both cage-policy's context (if any) and ruff-lint's linting instructions in its system prompt
+- **Credentials**: cage-policy's proxy-injected `EXAMPLE_API_KEY` is available to the agent (as the decoy) and rewritten by the proxy on outbound calls
+- **Tooling + config**: ruff is installed and `ruff.toml` is in the workspace
+- **Agent instructions**: the agent's system prompt carries ruff-lint's linting instructions (and any context cage-policy adds)
+- **Network**: unchanged by either kit — egress is whatever your org governance permits
 
 ---
 

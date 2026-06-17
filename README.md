@@ -24,7 +24,7 @@ The **four add-on modules** are independently runnable segments you toggle per a
 |---|--------|----------|-----------|------|
 | 0 | **Standard Demo** — Five isolation layers (beats 0–6) | Everyone | Always run this — it's the backbone of the pitch | [RUNBOOK.md](./RUNBOOK.md) |
 | 1 | Clone Fleet — Parallel agents on one repo | Dev champions, eng managers | Audience wants to see parallel AI agents coding simultaneously | [addons/01-clone-fleet.md](./addons/01-clone-fleet.md) |
-| 2 | Kit-as-Code — Policy as reviewable `spec.yaml` | CISOs, security architects | Audience asks "how do we audit what agents can reach?" | [addons/02-kit-as-code.md](./addons/02-kit-as-code.md) |
+| 2 | Kit-as-Code — Credential injection as reviewable `spec.yaml` | CISOs, security architects | Audience asks "how do agents use our secrets without ever holding them?" | [addons/02-kit-as-code.md](./addons/02-kit-as-code.md) |
 | 3 | Golden Template — Hardened org base image | Platform engineering, security | Audience asks "how do we enforce a baseline across all agents?" | [addons/03-golden-template.md](./addons/03-golden-template.md) |
 | 4 | Dev-Velocity Kits — Stacked mixins + Git URL load | Developer advocates, platform teams | Audience wants composability and reproducibility for developer workflows | [addons/04-dev-velocity-kits.md](./addons/04-dev-velocity-kits.md) |
 
@@ -48,7 +48,7 @@ sbx-enterprise-demo/
 │   ├── 03-golden-template.md        ← [Security] hardened org base image
 │   └── 04-dev-velocity-kits.md      ← [Dev]      stacked kits + Git URL load
 ├── kits/
-│   ├── cage-policy/spec.yaml        ← mixin: network allowlist + credential injection
+│   ├── cage-policy/spec.yaml        ← mixin: proxy-injected credential (as code)
 │   └── ruff-lint/                   ← mixin: ruff linter + shared ruff.toml
 │       ├── spec.yaml
 │       └── files/workspace/ruff.toml
