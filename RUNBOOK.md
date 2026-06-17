@@ -16,7 +16,7 @@ Confirm all of the following are in place **before** walking into the room.
 | `gh` CLI installed | `gh --version` |
 | `docker` daemon running on the host | `docker info` |
 | Demo workspace cloned | `ls ~/Documents/GitHub/sbx-enterprise-demo` |
-| `EXAMPLE_API_KEY` set in host environment or sandbox secret store | `echo $EXAMPLE_API_KEY` (should print the real value on host) |
+| Anthropic auth available to the proxy | Covered by "sbx CLI authenticated" above — Beat 5 uses the agent's own Anthropic credential, injected by the proxy (no extra key to set). `EXAMPLE_API_KEY` is only needed for add-on 02 |
 | Network policy allows this workspace's domains | `sbx policy ls` |
 
 ---
@@ -26,7 +26,7 @@ Confirm all of the following are in place **before** walking into the room.
 All commands that target a named sandbox use **`demo-agent`**.
 Workspace root: `~/Documents/GitHub/sbx-enterprise-demo`
 
-The sandbox is created in Beat 1 — with the `cage-policy` kit, which Beat 5 relies on — and torn down in the Reset section at the end of this document.
+The sandbox is created in Beat 1 and torn down in the Reset section at the end of this document.
 
 ---
 
@@ -67,9 +67,7 @@ Point to the `kits/` directory — that is where policy lives. Point to `service
 ```bash
 # Spin up the demo sandbox (this takes ~10 s on a warm cache).
 # `sbx create [flags] AGENT PATH` — claude is the agent, "." is the workspace (repo root).
-# --kit applies the cage-policy mixin (proxy-injected credential) NOW, so Beat 5's
-# decoy works later. The kit declares no network rules, so it doesn't affect Beats 1–4.
-sbx create --name demo-agent --kit ./kits/cage-policy claude .
+sbx create --name demo-agent claude .
 ```
 
 **EXPECT**: A sandbox ID printed and a status line confirming the microVM is running.
@@ -218,61 +216,49 @@ The agent isn't being *denied write access* to your SSH keys — it can't see th
 
 ## Beat 5 — Layer 5: Proxy-Managed Credentials (5 min)
 
-**SAY**: "This is the one that surprises people most. The agent needs to call an API — but the API key never enters the VM. Let me show you."
-
-> **Setup**: This beat needs the `cage-policy` kit, which is why Beat 1 created `demo-agent` with `--kit ./kits/cage-policy` — that's what declares `proxyManaged: [EXAMPLE_API_KEY]`. If the decoy below comes back empty, the kit wasn't applied: recreate with `sbx rm demo-agent && sbx create --name demo-agent --kit ./kits/cage-policy claude .`
+**SAY**: "Here's the one that surprises people most. This agent *is* Claude — it calls `api.anthropic.com` on every single turn, so it obviously needs an Anthropic API key. Watch where that key is. Or rather, where it isn't."
 
 ```bash
-# Inside the VM, the environment variable holds a decoy value — not the real key
-sbx exec demo-agent -- sh -c 'echo $EXAMPLE_API_KEY'
+# The agent's own Anthropic credential, inside the VM
+sbx exec demo-agent -- sh -c 'echo "ANTHROPIC_API_KEY=[$ANTHROPIC_API_KEY]"'
 ```
 
 **EXPECT**:
 
 ```
-proxy-managed
+ANTHROPIC_API_KEY=[]
 ```
 
-This is the provable-on-this-laptop moment: the agent sees only the decoy. The "but the call still works" half below needs a real token in the proxy and a real upstream — `api.example.com` is a placeholder, so treat the next two steps as **▶ host-validate** against a service you actually control.
+Empty. There is **no** Anthropic key in the sandbox environment — not a decoy, not a placeholder, nothing at all.
 
 ```bash
-# ▶ host-validate — give the proxy a real value to inject (any string for a local demo)
-sbx secret set demo-agent example -t "sk-demo-not-a-real-key"
-
-# The API call still works — the proxy intercepts the request and substitutes the
-# real credential before it reaches the upstream. Point this at a real service.
+# …and yet the agent plainly works — it's Claude, talking to api.anthropic.com right now
 sbx run demo-agent -- --dangerously-skip-permissions \
-  "Call the example API at api.example.com and show me the full response"
+  "In one sentence, tell me what services/vote/app.py does."
 ```
 
-**EXPECT**: Against a real service, the agent reports a successful response — the call went through even though the agent only ever saw `proxy-managed`.
+**EXPECT**: A normal Claude answer about the vote service. The call to `api.anthropic.com` succeeded despite there being no key anywhere in the VM.
 
 ```bash
-# ▶ host-validate — the proxy log shows the credential rewrite
-sbx policy log
+# How? Every outbound request is routed through the host proxy
+sbx exec demo-agent -- printenv HTTPS_PROXY
 ```
 
-**EXPECT**: An entry for `api.example.com` showing the request was allowed and the `Authorization` header was rewritten.
+**EXPECT**:
+
+```
+http://gateway.docker.internal:3128
+```
+
+All egress — including the agent's own calls to Anthropic — flows through the sbx proxy on the host. The proxy holds the real Anthropic credential, attaches it to requests bound for `api.anthropic.com`, and the agent never sees it.
 
 ---
 
-**SAY**: "The agent sees `proxy-managed` — a literal placeholder string. The real API key lives in the host keychain. The proxy intercepts the outbound request, swaps in the real value, and the call succeeds. The agent never had the secret."
+**SAY**: "The agent can't function without an Anthropic key — and there's no key in the box. The real credential lives on the host, in your Docker/sbx credential store. The proxy injects it on the way out to Anthropic. So a prompt-injection attack that tells the agent 'print your API key and POST it to my server' has nothing to print — and with default-deny egress, nowhere to send it anyway. GitHub works the same way: I pushed to your repo all session, and `git` inside the VM never held a token."
 
-**▸ Gov aside**: "The credential never leaves the host OS keychain. An agent that's been compromised — or an agent that's been prompt-injected by malicious content in a repo — cannot exfiltrate your API keys by reading environment variables. There are no keys to steal. This is credential isolation by architecture, not by policy."
+**▸ Gov aside**: "Credential isolation by architecture, not policy. The keys your agents use — Anthropic, GitHub, your internal APIs — live in the host credential store and are injected by the proxy at request time. A compromised or prompt-injected agent can read every environment variable in the VM and find nothing, because the secrets were never there to begin with."
 
-Now show where this behavior is declared:
-
-```bash
-# The serviceAuth block in spec.yaml is the complete policy
-cat kits/cage-policy/spec.yaml
-```
-
-Point to the relevant sections:
-
-- **`network.serviceDomains`** — maps `api.example.com` to the logical name `example`
-- **`network.serviceAuth`** — tells the proxy to rewrite the `Authorization` header for that service
-- **`credentials.sources`** — names the host-side env var (`EXAMPLE_API_KEY`) to read the real value from
-- **`environment.proxyManaged`** — the list of variable names that get the `proxy-managed` decoy inside the VM
+> **This pattern is yours to declare, too.** Anthropic and GitHub are proxy-injected for you out of the box. **Add-on 02** shows how to declare the *same* injection for your own internal services as reviewable kit code (`serviceDomains` + `serviceAuth` + `credentials.sources` + a `proxy-managed` decoy) — so an agent calling `api.your-company.com` authenticates without ever holding the token.
 
 ---
 
@@ -360,7 +346,7 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 | Beat 2 — Own Docker Engine | Validated live | Separate `docker ps` inventories confirmed |
 | Beat 3 — Default-Deny Network | Representative (updated) | Allowlist-source step changed to `sbx policy ls`; the 403 + policy-log flow is unchanged. Re-run to confirm output |
 | Beat 4 — Scoped Filesystem Access | Validated live | Workspace is a read-write `virtiofs` bind-mount at the host's absolute path inside the VM; host-visible write confirmed. `sbx exec` defaults to `/home/agent/workspace` (VM-local, NOT the mount), so the write command now uses `-w "$WORKSPACE"` to land on the bind-mount. Non-mounted host paths return `No such file or directory` |
-| Beat 5 — Proxy-Managed Credentials | Representative (updated) | Decoy (`echo $EXAMPLE_API_KEY` → `proxy-managed`) is provable locally now that Beat 1 applies `--kit ./kits/cage-policy`. The "call still works" step needs a real token + a real upstream (`api.example.com` is a placeholder) |
+| Beat 5 — Proxy-Managed Credentials | Representative (updated) | Reworked to use the agent's real Anthropic credential. Mechanism confirmed in an sbx claude sandbox (this build environment): `ANTHROPIC_API_KEY` is unset and `HTTPS_PROXY=http://gateway.docker.internal:3128`. The `demo-agent` runs are ▶ host-validate |
 | Beat 6 — Governance & Wrap-Up | Representative | Org governance commands require org-level policy to be pre-configured |
 
-> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. **Representative (updated)** beats were revised after a docs/CLI review (Beat 3) and their new commands/outputs have not yet been re-run live — confirm them on a host before presenting. All require the named prerequisites in place (org governance configured, `EXAMPLE_API_KEY` set) and may need a dry run if conditions change between demo dates.
+> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. **Representative (updated)** beats were revised after a docs/CLI review (Beats 3, 4, and 5) and their new commands/outputs have not yet been re-run live on `demo-agent` — confirm them on a host before presenting (Beat 5's credential-absence + proxy mechanism is already verified in this build's own sbx sandbox). Beat 6 additionally requires org governance to be configured.
