@@ -2,6 +2,7 @@
 """Voting service — accepts POST /vote?choice=<a|b> and tallies in-memory."""
 
 import os
+import datetime
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -25,6 +26,17 @@ def vote():
 @app.get("/results")
 def results():
     return jsonify(votes)
+
+
+@app.get("/stats")
+def stats():
+    total = sum(votes.values())
+    percentages = {k: round(v / total * 100, 1) if total else 0.0 for k, v in votes.items()}
+    return jsonify({
+        "percentages": percentages,
+        "totals": votes,
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    })
 
 
 if __name__ == "__main__":
