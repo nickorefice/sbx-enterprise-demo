@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 )
 
 func getenv(key, fallback string) string {
@@ -40,6 +41,52 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "gateway"})
+	})
+
+	fetchHealthz := func(baseURL string) map[string]interface{} {
+		resp, err := http.Get(baseURL + "/healthz") //nolint:noctx
+		if err != nil {
+			return map[string]interface{}{"error": err.Error()}
+		}
+		defer resp.Body.Close()
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return map[string]interface{}{"error": err.Error()}
+		}
+		return result
+	}
+
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		var (
+			mu         sync.Mutex
+			wg         sync.WaitGroup
+			voteHealth map[string]interface{}
+			resultHealth map[string]interface{}
+		)
+		for _, job := range []struct {
+			url string
+			dst *map[string]interface{}
+		}{
+			{voteSvc, &voteHealth},
+			{resultSvc, &resultHealth},
+		} {
+			wg.Add(1)
+			go func(u string, dst *map[string]interface{}) {
+				defer wg.Done()
+				h := fetchHealthz(u)
+				mu.Lock()
+				*dst = h
+				mu.Unlock()
+			}(job.url, job.dst)
+		}
+		wg.Wait()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"gateway": map[string]string{"status": "ok", "service": "gateway"},
+			"vote":    voteHealth,
+			"result":  resultHealth,
+		})
 	})
 
 	// /vote/** → vote service
