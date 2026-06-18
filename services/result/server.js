@@ -5,6 +5,8 @@ const url  = require('url');
 
 const VOTE_SERVICE = process.env.VOTE_SERVICE || 'http://localhost:5000';
 
+const startTime = Date.now();
+
 function fetchResults(cb) {
   http.get(`${VOTE_SERVICE}/results`, (res) => {
     let data = '';
@@ -21,7 +23,7 @@ const server = http.createServer((req, res) => {
 
   if (pathname === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ status: 'ok', service: 'result' }));
+    return res.end(JSON.stringify({ status: 'ok', uptime: Math.floor((Date.now() - startTime) / 1000) }));
   }
 
   if (pathname === '/') {
