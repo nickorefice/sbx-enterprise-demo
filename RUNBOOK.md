@@ -12,7 +12,7 @@ Confirm all of the following are in place **before** walking into the room.
 
 | Requirement | Check |
 |---|---|
-| `sbx` CLI installed and authenticated | `sbx version` |
+| `sbx` CLI installed and authenticated | `sbx version` — beats validated on **v0.38** (2026-08-10); on much older/newer builds, re-confirm the `sbx policy ls` / `sbx policy log` output formats, which have drifted between releases |
 | `gh` CLI installed | `gh --version` |
 | `docker` daemon running on the host | `docker info` |
 | Demo workspace cloned | `ls ~/Documents/GitHub/sbx-enterprise-demo` |
@@ -77,14 +77,14 @@ sbx create --name demo-agent claude .
 sbx exec demo-agent -- uname -srm
 ```
 
-**EXPECT**: `Linux 7.0.8 aarch64` (or similar) — the kernel name is **Linux**.
+**EXPECT**: `Linux 7.0.12 aarch64` (or similar) — the kernel name is **Linux**.
 
 ```bash
 # Compare against the host kernel
 uname -srm
 ```
 
-**EXPECT** (on a macOS host): `Darwin 23.6.0 arm64` (or similar) — the kernel name is **Darwin**.
+**EXPECT** (on a macOS host): `Darwin 25.5.0 arm64` (or similar) — the kernel name is **Darwin**.
 
 The contrast is the point: the host runs the **Darwin** (XNU) kernel, the sandbox runs a separate **Linux** kernel. Even on a Linux host — where both say `Linux` — the release strings differ and the namespace isolation still holds: the sandbox cannot see the host's kernel modules or `/proc` tree.
 
@@ -154,14 +154,14 @@ Now show where the allowlist comes from:
 sbx policy ls
 ```
 
-**EXPECT**: The approved domains — `api.anthropic.com`, `github.com`, Docker Hub, and a handful of others — each tagged with its origin. Under org governance these are set centrally (Docker Admin Console / Governance API), apply to every sandbox uniformly, and can't be overridden locally; everything not on the list falls through to default-deny.
+**EXPECT**: A header line confirming org governance is active — e.g. `Governance: Managed by <your-org> | Sync: OK` — followed by a table of **named policy groups** (`POLICY / SOURCE / APPLIES TO / SUMMARY`), each sourced from `org` and applied to `all` sandboxes: an approved-AI-vendor allowlist, source-control and package-registry allows, an explicit exfiltration-tools *deny*, and so on. This is the governed control plane itself — set centrally (Docker Admin Console / Governance API), applied to every sandbox uniformly, and not overridable locally; everything not allowed falls through to default-deny. (Individual domains live inside these groups — drill in with `sbx policy inspect <policy>` or reveal suppressed rules with `sbx policy ls --include-inactive`.)
 
 ```bash
-# The proxy log shows every blocked attempt, with timestamps
+# The proxy log shows every allowed and blocked attempt, with counts + timestamps
 sbx policy log
 ```
 
-**EXPECT**: A table of recent connection attempts, each showing the destination host, the rule that matched (or the default-deny fallback), and a last-seen timestamp.
+**EXPECT**: Two sections. **Blocked requests** lists the attempt you just made — `example.com:443`, rule `No matching allow rule (default deny)` — alongside any other denied hosts, each with a hit count and last-seen timestamp. **Allowed requests** shows the traffic that *was* permitted, e.g. `api.anthropic.com:443` (the agent's own calls). This split is your audit trail: what was denied, what was allowed, and how often.
 
 ---
 
@@ -283,7 +283,7 @@ sbx policy ls
 sbx ls
 ```
 
-**EXPECT**: The `demo-agent` row shows the sandbox running, with its agent, workspace, and any published ports. (Network-policy and credential rewrites are shown by `sbx policy ls`, above.)
+**EXPECT**: A table (`SANDBOX / AGENT / STATUS / PORTS / WORKSPACE`) with the `demo-agent` row showing `running`, agent `claude`, this repo as its workspace, and any published ports. Any other sandboxes on your machine appear here too — that's expected; just point at the `demo-agent` row. (Network-policy and credential rewrites are shown by `sbx policy ls`, above.)
 
 ---
 
@@ -346,9 +346,9 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 | Beat 0 — Prep & Context | Validated live | Repo structure is stable |
 | Beat 1 — Separate Kernel | Validated live | `uname -srm` shows Darwin (host) vs Linux (sandbox); command updated from `uname -r` |
 | Beat 2 — Own Docker Engine | Validated live | Separate `docker ps` inventories confirmed |
-| Beat 3 — Default-Deny Network | Representative (updated) | Allowlist-source step changed to `sbx policy ls`; the 403 + policy-log flow is unchanged. Re-run to confirm output |
+| Beat 3 — Default-Deny Network | Validated live | Confirmed on `demo-agent` (sbx v0.38): outbound to `example.com` returns HTTP 403. `sbx policy ls` now shows **org-governed named policy groups** with a `Managed by <org>` header (EXPECT block updated to match); `sbx policy log` splits into Blocked/Allowed sections with counts (EXPECT updated) |
 | Beat 4 — Scoped Filesystem Access | Validated live | Workspace is a read-write `virtiofs` bind-mount at the host's absolute path inside the VM; host-visible write confirmed. `sbx exec` defaults to `/home/agent/workspace` (VM-local, NOT the mount), so the write command now uses `-w "$WORKSPACE"` to land on the bind-mount. Non-mounted host paths return `No such file or directory` |
-| Beat 5 — Proxy-Managed Credentials | Representative (updated) | Reworked to use the agent's real Anthropic credential. Mechanism confirmed in an sbx claude sandbox (this build environment): `ANTHROPIC_API_KEY` is unset and `HTTPS_PROXY=http://gateway.docker.internal:3128`. The `demo-agent` runs are ▶ host-validate |
-| Beat 6 — Governance & Wrap-Up | Representative | Org governance commands require org-level policy to be pre-configured |
+| Beat 5 — Proxy-Managed Credentials | Validated live | Confirmed on `demo-agent` (sbx v0.38): `ANTHROPIC_API_KEY` is unset inside the VM and `HTTPS_PROXY=http://gateway.docker.internal:3128`. Reworked to use the agent's real Anthropic credential |
+| Beat 6 — Governance & Wrap-Up | Validated live | Confirmed on `demo-agent` (sbx v0.38): `sbx policy ls` shows the live org governance header (`Managed by <org>`) and `sbx ls` shows the running `demo-agent` row. Requires org-level policy to be configured (it is, in this environment) |
 
-> **Representative** beats follow the documented flow exactly and have been validated in controlled conditions. **Representative (updated)** beats were revised after a docs/CLI review (Beats 3, 4, and 5) and their new commands/outputs have not yet been re-run live on `demo-agent` — confirm them on a host before presenting (Beat 5's credential-absence + proxy mechanism is already verified in this build's own sbx sandbox). Beat 6 additionally requires org governance to be configured.
+> All six beats have been **validated live** on a real `demo-agent` sandbox against sbx v0.38 (2026-08-10). The `sbx run …` agent-turn wrappers in Beats 3 and 5 were validated at the mechanism level via `sbx exec` (the underlying block / credential-absence is what the beat proves); run the full agent-turn version once during your own rehearsal so the phrasing of the agent's response is familiar. Beat 6 requires org governance to be configured.
