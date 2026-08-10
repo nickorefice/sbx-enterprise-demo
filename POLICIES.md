@@ -2,14 +2,15 @@
 
 This document describes the sandbox security model: what traffic an agent sandbox is permitted to
 initiate (governed at the **org** level) and how credentials are delivered without exposing them to
-agent code (declared in the **`cage-policy` kit**). It is intended for security engineers, platform
-teams, and reviewers.
+agent code (configured host-side via the **secret store**, `sbx secret set-custom`). It is intended for
+security engineers, platform teams, and reviewers.
 
 > **Division of responsibility (read this first):**
 > - **Network and filesystem access** are owned by **org-level governance** (Docker Admin Console /
 >   Governance API). When governance is active it **replaces** any kit- or sandbox-local rules.
-> - **Credential injection** is owned by the **kit** (`kits/cage-policy/spec.yaml`). Org governance
->   does not manage it, so it correctly lives in reviewable kit code.
+> - **Credential injection** is configured **host-side** in the secret store (`sbx secret set-custom`).
+>   The value, its target host, and its in-VM placeholder never enter the kit or git; the proxy reads
+>   the real value on the host and swaps it onto outbound requests.
 >
 > The kits in this repo therefore declare **no** network allow/deny rules — in a governed org they
 > would be silently overridden noise. The network model below describes what to configure in **org
@@ -69,61 +70,49 @@ org level (or simply excluded from the allowlist under default-deny): `*.dropbox
 
 ---
 
-## 3. Proxy-Managed Credential Model (`kits/cage-policy/spec.yaml`)
+## 3. Proxy-Managed Credential Model (`sbx secret set-custom`)
 
-This is what the kit *does* declare. Credentials are never written into the VM image and are never
-visible as their real values inside the sandbox. The delivery chain works as follows.
+Credentials are never written into the VM image and are never visible as their real values inside the
+sandbox. The value, the target host, and the in-VM placeholder are all configured **host-side** — none
+of it lives in the kit or in git. The delivery chain works as follows.
 
-### 3.1 Host Keychain → Sandbox Secret Store
+### 3.1 Host Secret Store (set once on the host)
 
-On the host, an operator stores the real credential in the `sbx` secret store:
+On the host, an operator registers the credential as a custom secret:
 
 ```bash
-sbx secret set <sandbox-name> example -t "$(printenv EXAMPLE_API_KEY)"
+sbx secret set-custom -g \
+  --host api.example.com \
+  --env EXAMPLE_API_KEY \
+  --placeholder proxy-managed \
+  --value "$(printenv EXAMPLE_API_KEY)"
 ```
 
-This writes the token into the host-side secret store, associated with the logical service name
-`example` (matching the `serviceDomains` and `serviceAuth` configuration in `spec.yaml`).
+This records, in the host-side secret store: the real `--value` (which never leaves the host), the
+`--host`(s) the proxy should rewrite, the `--env` var to expose inside the VM, and the `--placeholder`
+the VM sees in its place. It appears in a dedicated **CUSTOM SECRETS** section of `sbx secret ls` and
+applies live to running sandboxes.
 
 ### 3.2 VM Decoy Value
 
-When the sandbox starts, the proxy sets the environment variable `EXAMPLE_API_KEY` inside the VM
-to the literal string `proxy-managed`. This is declared explicitly in `spec.yaml`:
+When the sandbox starts, the env var `EXAMPLE_API_KEY` inside the VM is set to the placeholder string
+`proxy-managed` (the `--placeholder` value; omit the flag and sbx generates one like `sbx-cs-<rand>`).
 
-```yaml
-environment:
-  proxyManaged:
-    - EXAMPLE_API_KEY
-```
-
-If the agent or any process running inside the VM reads this environment variable — through shell
-expansion, `os.getenv()`, `process.env`, or any other mechanism — it receives `proxy-managed`, not
-the real token. There is no path by which the actual credential value can be observed from inside
-the VM.
+If the agent or any process inside the VM reads this variable — through shell expansion, `os.getenv()`,
+`process.env`, or any other mechanism — it receives `proxy-managed`, not the real token. There is no
+path by which the actual credential value can be observed from inside the VM.
 
 ### 3.3 Proxy Rewrite on Outbound Request
 
-When the agent makes an outbound HTTPS request to a domain listed under `serviceDomains`
-(in this demo, `api.example.com`), the proxy intercepts the request before it leaves the host
-network stack. It looks up the credential associated with the mapped service name (`example`),
-reads the real token from the host secret store, and rewrites the request header specified by
-`serviceAuth`:
+When the agent makes an outbound request to one of the configured `--host` targets (in this demo,
+`api.example.com`), the proxy intercepts it before it leaves the host network stack, finds the
+placeholder anywhere in the request, and replaces it with the real value from the host secret store.
+The request that reaches `api.example.com` carries the correctly formed
+`Authorization: Bearer <real-token>` header (or the real value wherever the placeholder appeared). The
+agent process never constructed that header with the real value; the proxy injected it transparently.
 
-```yaml
-serviceAuth:
-  example:
-    headerName: Authorization
-    valueFormat: "Bearer %s"
-```
-
-The outbound request that reaches `api.example.com` carries a correctly formed
-`Authorization: Bearer <real-token>` header. The agent process never constructed that header with
-the real value; the proxy injected it transparently.
-
-> Note: `serviceDomains` and `serviceAuth` live under the `network:` block in `spec.yaml`, but they
-> are **credential plumbing**, not a network cage — they tell the proxy *which upstream* to attach
-> the credential to and *how*. They do not allow or deny traffic; egress remains governed by org
-> policy.
+> Note: this is **credential plumbing**, not a network cage — it tells the proxy *which upstream* to
+> attach the credential to. It does not allow or deny traffic; egress remains governed by org policy.
 
 ### 3.4 Security Properties
 
@@ -146,14 +135,15 @@ This model provides several meaningful guarantees:
 |---|---|---|---|
 | Network egress (allow/deny) | Org governance (Admin Console / API) | Security / IT | No — org rules replace kit/local rules |
 | Filesystem access (mountable host paths) | Org governance | Security / IT | No |
-| Credential injection (which secret, which service, which header) | `kits/cage-policy/spec.yaml` | Team / platform | N/A — org governance does not manage credentials |
-| Tooling, config files, agent instructions | Kits (e.g. `ruff-lint`) | Team / platform | N/A |
+| Credential injection (value, target host, placeholder) | Host secret store (`sbx secret set-custom`) | Security / platform | N/A — org governance does not manage credentials |
+| Tooling, config files, agent instructions | Kits (e.g. `secure-baseline`, `ruff-lint`) | Team / platform | N/A |
 
 When organization governance is active, the documentation is explicit: "local rules are no longer
 evaluated and can't be used to supplement or override the organization policy." This is why the
-network cage belongs at the org level and credential wiring belongs in the kit — each is owned where
-it is actually enforced. Changes to the org allowlist go through org-level review; changes to
-credential wiring go through pull-request review on the `kits/` directory (gate it with CODEOWNERS).
+network cage belongs at the org level and credential material belongs in the host secret store — each
+is owned where it is actually enforced. Changes to the org allowlist go through org-level review;
+credential changes are made with `sbx secret set-custom` and audited in the secret store; and the
+non-secret kit goes through pull-request review on the `kits/` directory (gate it with CODEOWNERS).
 
 ---
 
@@ -177,11 +167,11 @@ github.com                              allow   org       active
 api.github.com                          allow   org       active
 registry-1.docker.io                    allow   org       active
 *.dropbox.com                           deny    org       active
-api.example.com                         allow   org       active (credential-rewrite via kit)
+api.example.com                         allow   org       active (credential-rewrite via custom secret)
 ```
 
-The `credential-rewrite` annotation on `api.example.com` reflects the kit's `serviceAuth` wiring;
-the allow itself is an org-level decision.
+The `credential-rewrite` annotation on `api.example.com` reflects the custom secret's host mapping
+(`sbx secret set-custom --host`); the allow itself is an org-level decision.
 
 ### 5.2 `sbx policy log` — Connection History
 
@@ -225,6 +215,7 @@ Blocked by network policy: domain <host>
 
 ## 6. References
 
-- Credential kit source: `kits/cage-policy/spec.yaml`
+- Credential config (host-side): `sbx secret set-custom --help`
+- Non-secret kit source: `kits/secure-baseline/spec.yaml`
 - Sandbox CLI reference: `sbx --help`
 - Org governance: Docker Admin Console / Governance API (`docs.docker.com/ai/sandboxes/governance/`)

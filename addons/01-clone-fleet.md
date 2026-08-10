@@ -48,32 +48,40 @@ grep -n "HandleFunc" services/gateway/main.go
 
 If the endpoints already exist from a previous run, reset to a clean commit before proceeding (see **Step 4: Reset**).
 
+Now create the three clone sandboxes. `sbx run NAME` only **attaches** to a sandbox that already exists (otherwise `NAME` must be a known agent such as `claude`), so the fleet must be created first. The setup script does this idempotently:
+
+```bash
+# creates svc-vote, svc-result, svc-gateway as clone sandboxes
+./addons/fleet.sh setup
+```
+
+**EXPECT**: One `[OK] Created clone sandbox '<name>'` line per service (or `already exists — skipping` on a re-run). Under the hood each is `sbx create --name <svc> --clone claude .` — `--clone` must be set at creation time. Confirm with `./addons/fleet.sh status`.
+
+> **One-shot alternative (no setup script):** you can create and launch in a single command by naming the agent explicitly — `sbx run --name svc-vote --clone claude . -- --dangerously-skip-permissions "<prompt>"`. The setup-script path is used here so the launch commands below stay short and the fleet is pre-warmed before the demo.
+
 ---
 
 ## Step 1: Launch the Fleet
 
-Open three terminal tabs. Run one command per tab. All three can be started in quick succession — they are independent and will run concurrently.
+Open three terminal tabs. Run one command per tab. All three can be started in quick succession — they are independent and will run concurrently. (The sandboxes were created in **Prep** above, so these commands just attach and hand the agent its task — no `--clone` needed here, since clone mode was set at creation time.)
 
 ```bash
 # Tab 1 — vote service agent
-# ▶ host-validate
-sbx run svc-vote --clone \
+sbx run svc-vote \
   -- --dangerously-skip-permissions \
   "In services/vote: add a /stats endpoint returning vote percentages and a timestamp, then commit 'fleet: vote stats endpoint'"
 ```
 
 ```bash
 # Tab 2 — result service agent
-# ▶ host-validate
-sbx run svc-result --clone \
+sbx run svc-result \
   -- --dangerously-skip-permissions \
   "In services/result: add /healthz returning {status:ok,uptime:<seconds>}, then commit 'fleet: result healthz uptime'"
 ```
 
 ```bash
 # Tab 3 — gateway agent
-# ▶ host-validate
-sbx run svc-gateway --clone \
+sbx run svc-gateway \
   -- --dangerously-skip-permissions \
   "In services/gateway: add a /metrics endpoint proxying both upstream /healthz responses into one JSON, then commit 'fleet: gateway metrics aggregation'"
 ```
@@ -170,7 +178,15 @@ git merge --no-ff fleet/gateway -m "merge: gateway metrics aggregation"
 
 ## Step 4: Reset Between Runs
 
-Clean up sandboxes and local tracking branches so the demo is ready to run again:
+Clean up sandboxes and local tracking branches so the demo is ready to run again. The setup script's `reset` subcommand does all three (sandboxes, `sandbox-*` remotes, and `fleet/*` branches):
+
+```bash
+# ▶ host-validate — removes svc-* sandboxes, sandbox-* remotes, and fleet/* branches
+./addons/fleet.sh reset
+```
+
+<details>
+<summary>Equivalent manual steps</summary>
 
 ```bash
 # Remove the sandboxes (stops the VMs, releases resources). Prompts for
@@ -186,6 +202,8 @@ git remote remove sandbox-svc-vote    2>/dev/null || true
 git remote remove sandbox-svc-result  2>/dev/null || true
 git remote remove sandbox-svc-gateway 2>/dev/null || true
 ```
+
+</details>
 
 If you also want to undo the merge commit (to re-run the full demo from scratch):
 
@@ -227,8 +245,9 @@ The default-deny network proxy means an agent cannot phone home to an attacker-c
 
 | Step | Validation method | Notes |
 |------|-------------------|-------|
-| Step 1 — Launch fleet | **host-validate** | Requires `sbx` CLI on host |
+| Prep — `./addons/fleet.sh setup` | **host-validate** | Creates the three clone sandboxes via `sbx create --name <svc> --clone claude .`; idempotent. Required before Step 1 — `sbx run svc-vote` only attaches to an existing sandbox |
+| Step 1 — Launch fleet | **host-validate** | Requires `sbx` CLI on host; sandboxes must exist (run Prep first) |
 | Step 2 — Fetch and review | Self-validated (git local) | Runs entirely on host, no sbx needed |
 | Step 3 — Merge | Self-validated (git local) | Runs entirely on host |
-| Step 4 — Reset | **host-validate** (`sbx rm`) + self-validated (git local) | `sbx rm` requires host CLI |
+| Step 4 — Reset | **host-validate** (`sbx rm`) + self-validated (git local) | `./addons/fleet.sh reset` wraps `sbx rm` + remote/branch cleanup; `sbx rm` requires host CLI |
 | Security audit (`sbx policy log`) | **host-validate** | Run while sandboxes still exist |

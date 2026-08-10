@@ -5,7 +5,7 @@ displayName: Ruff Linter
 description: |
   Installs the ruff Python linter/formatter and drops a shared ruff.toml into
   the workspace. The agent is instructed via agentContext to run ruff before
-  every commit. Stackable with other mixins such as cage-policy.
+  every commit. Stackable with other mixins such as secure-baseline.
 
 commands:
   install:

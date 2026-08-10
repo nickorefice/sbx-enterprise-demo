@@ -54,14 +54,14 @@ Point out the `ruff.toml` configuration: `line-length = 100`, `target-version = 
 
 ---
 
-## Step 2: Stack Two Kits
+## Step 2: Stack Two Kits — Org Baseline + Team Add-on
 
-Combine the credential injection from `cage-policy` with the linting from `ruff-lint` in a single command:
+The realistic enterprise pattern: every team inherits the org `secure-baseline` (add-on 02) and layers their own team-specific kit on top. Combine the org baseline with the team's `ruff-lint` in a single command:
 
 ```bash
-# ▶ host-validate — credential injection + linting in one command
+# ▶ host-validate — org baseline + team linter in one command
 sbx run claude \
-  --kit ./kits/cage-policy \
+  --kit ./kits/secure-baseline \
   --kit ./kits/ruff-lint \
   -- --dangerously-skip-permissions \
   "Fix any ruff errors in services/vote/app.py, then commit 'lint: fix ruff errors in vote service'"
@@ -69,12 +69,12 @@ sbx run claude \
 
 **EXPECT**: The agent runs `ruff check services/vote/app.py`, fixes any violations, runs `ruff format`, and commits the result. If the file is already clean, it will say so and make no commit.
 
-**SAY**: "Two kits, stacked. The credential wiring from cage-policy, the linting from ruff-lint. Neither knows about the other. The install commands run in order, the files layer together, the agentContext blocks concatenate. Compose like LEGO."
+**SAY**: "Two kits, stacked. The org-wide baseline from secure-baseline, the team's linting from ruff-lint. Neither knows about the other. The install commands run in order, the files layer together, the agentContext blocks concatenate. Compose like LEGO — the org owns the baseline, the team owns the add-on, and a developer gets both with no manual setup."
 
 Highlight what the merge produces:
-- **Credentials**: cage-policy's proxy-injected `EXAMPLE_API_KEY` is available to the agent (as the decoy) and rewritten by the proxy on outbound calls
-- **Tooling + config**: ruff is installed and `ruff.toml` is in the workspace
-- **Agent instructions**: the agent's system prompt carries ruff-lint's linting instructions (and any context cage-policy adds)
+- **Credentials + env**: secure-baseline's proxy-injected `EXAMPLE_API_KEY` (the decoy, rewritten by the proxy on outbound calls) and its org env vars (curated Docker Hub base-image namespace, compliance profile)
+- **Tooling + config**: `detect-secrets` from secure-baseline *and* `ruff` from ruff-lint are both installed; `CODING-STANDARDS.md` and `ruff.toml` both layered into the workspace
+- **Agent instructions**: the agent's memory carries both agentContext blocks — secure-baseline's security conventions and ruff-lint's linting workflow
 - **Network**: unchanged by either kit — egress is whatever your org governance permits
 
 ---

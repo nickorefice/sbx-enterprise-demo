@@ -2,8 +2,6 @@
 
 **Goal**: Show a hardened org image that bakes in the enterprise security baseline — every agent that uses it starts identical, compliant, and with no internet-fetched toolchain.
 
-**Audience**: Platform engineering, security engineers, anyone responsible for standardizing the agent runtime environment across the organization.
-
 ---
 
 ## Prerequisites

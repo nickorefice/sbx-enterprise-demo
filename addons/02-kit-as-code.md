@@ -1,8 +1,8 @@
-# Add-on 02 — Kit-as-Code: Credential Injection  [Security]
+# Add-on 02 — Kit-as-Code: The Agent Provisioning Contract  [Security]
 
-**Goal**: Show that an agent's service credentials are injected by the proxy and declared as reviewable code in `spec.yaml` — the real secret stays in the host keychain, never enters the VM, and the agent only ever sees the decoy string `proxy-managed`.
+**Goal**: Show that how an agent is provisioned — the tools it gets, the environment it runs in, the files in its workspace, what runs at startup, and the instructions it follows — is declared as **reviewable code** in a single `spec.yaml`, gated by pull-request review. Every capability is in the file: no hidden setup script, no "works on my laptop" drift.
 
-**Audience**: CISOs, security architects, compliance engineers — anyone who needs to answer "how do agents authenticate to our services without the secret leaking into agent-readable space?"
+**Audience**: CISOs, security architects, compliance engineers, platform teams — anyone who needs to answer "what exactly is in an agent's environment, and who approved it?"
 
 ---
 
@@ -11,45 +11,48 @@
 - `sbx` CLI installed and authenticated on your host machine
 - The `sbx-enterprise-demo` repo checked out locally (`github.com/nickorefice/sbx-enterprise-demo`)
 - `python3` available locally (for the YAML-lint fallback in Step 2)
-- Optional: `EXAMPLE_API_KEY` set as a sandbox secret (`sbx secret set <sandbox> example -t "<value>"`) to demonstrate credential injection end-to-end
+- For the tool installs (Step 3): the sandbox able to reach `pypi.org`/`files.pythonhosted.org`/`astral.sh` (detect-secrets) and `raw.githubusercontent.com`/`github.com` (Docker Scout CLI) — granted via **org governance** (network is org-owned, not declared in the kit), or pre-baked into the golden template (add-on 03). No special template is needed to run `docker scout`: `sbx run claude` defaults to the Docker-enabled variant, so every sandbox ships with its own isolated in-sandbox Docker engine (`docker-next`).
 
 ---
 
 ## Background
 
-In sbx, a **kit** (mixin) is a directory containing a `spec.yaml` that declaratively describes an agent's capabilities. This module focuses on the **credential model** — the security crown jewel:
+In sbx, a **kit** (mixin) is a directory containing a `spec.yaml` that declaratively describes an agent's environment. This add-on demonstrates the **five capability types** a kit declares as code, all with one kit, `secure-baseline`:
 
-- The real secret stays in the **host keychain**.
-- `credentials.sources.<svc>.env` tells the proxy which host-side variable holds it.
-- `environment.proxyManaged` sets the in-VM variable to the decoy string `proxy-managed`.
-- `network.serviceDomains` + `network.serviceAuth` tell the proxy which upstream to attach the credential to, and how (which header, what format).
+| # | Capability | spec.yaml section | What it does |
+|---|-----------|-------------------|--------------|
+| 1 | **Tools to install** | `commands.install` | Installs **Docker Scout** (image CVE/SBOM scanning) and `detect-secrets` once at creation (as the agent user) |
+| 2 | **Environment variables** | `environment.variables` | Sets non-secret org config: curated Docker Hub base-image namespace, build platform, telemetry opt-out, compliance profile |
+| 3 | **Files to drop in** | `files/` (static) + `commands.initFiles` (runtime-substituted) | Ships a coding-standards doc and a per-sandbox provenance file |
+| 4 | **Startup commands** | `commands.startup` | Writes a provisioning status stamp on every start (idempotent) |
+| 5 | **Memory instructions** | `agentContext` | Injects org conventions into the agent's memory |
 
-The agent authenticates to the service, but never possesses the token.
+> **Why no network allow/deny rules in this kit?**
+> In a governed enterprise, **org-level governance owns network and filesystem access and overrides any kit network rules** (see the box at the end of this doc). A network allowlist declared in a kit is therefore noise in the environments these buyers actually run — documentation at best, silently overridden at worst. So this kit covers everything org governance does *not* manage and leaves the network cage to org governance. (For ungoverned/individual use, a kit allowlist *does* still apply — but that's not the enterprise story.) For the network cage itself, see RUNBOOK Beat 3 (default-deny network) and your org governance policy.
 
-> **Why are there no network allow/deny rules in this kit?**
-> In a governed enterprise, **org-level governance owns network and filesystem access and overrides any kit network rules** (see the box at the end of this doc). A network allowlist declared in a kit is therefore noise in the environments these buyers actually run — it's documentation at best, silently overridden at worst. So we keep this kit focused on what it uniquely provides, and on what org governance does *not* manage: **credential injection**. For the network cage itself, see RUNBOOK Beat 3 (default-deny network) and your org governance policy.
+> **Composable.** This add-on uses the comprehensive `secure-baseline` kit on its own. Kits also stack — add-on 04 layers `secure-baseline` (the org baseline) with `ruff-lint` (a team add-on) in a single `sbx run`.
 
 ---
 
-## Step 1: Show the Credential Model as Code
+## Step 1: Show the Whole Provisioning Contract as Code
 
 ```bash
-# The entire credential-injection contract lives here — in git, reviewable like any other code
-cat kits/cage-policy/spec.yaml
+# The kit's declared environment — tools, env, files, startup, memory —
+# lives in one file, in git, reviewable like any other code.
+cat kits/secure-baseline/spec.yaml
 ```
 
-Walk through each section with the audience:
+Walk through it top to bottom against the capability table above. The point to land:
 
-| Section | What it does |
-|---------|-------------|
-| `credentials.sources.example.env` | Names the **host-side** env var (`EXAMPLE_API_KEY`) that holds the real secret. The proxy reads it at request time; it is never written into the VM. |
-| `environment.proxyManaged` | Sets `EXAMPLE_API_KEY=proxy-managed` **inside** the VM — the agent never sees the real value |
-| `network.serviceDomains` | Maps `api.example.com` to the logical service name `example` so a credential can be attached to it |
-| `network.serviceAuth` | Rewrites the `Authorization` header on every outbound request to that service, as `Bearer <real-token>` |
+**SAY**: "This one file *is* the agent's environment. Every tool it has, every variable it runs with, every file in its workspace, what runs when it boots, and the instructions it follows — all declared here, all in git, all going through pull-request review, scanned by your SAST tools, and gated by CODEOWNERS on the `kits/` directory. There is no hidden setup script, no 'works on my laptop' drift. The kit is the environment, and the environment is code."
 
-**SAY**: "This is the credential contract for the agent, in a file that goes through pull request review, gets scanned by your SAST tools, and lives in your git history. The real token is in the host keychain. The kit only declares *where to read it* and *which service to attach it to* — never the value itself."
+Then show the static file the kit ships (capability #3):
 
-**SAY**: "Notice what is *not* here: there's no network allowlist. In your org, network and filesystem access are governed centrally and override anything a kit could declare — so we don't pretend the kit is the network boundary. The kit injects credentials; org governance is the cage."
+```bash
+cat kits/secure-baseline/files/workspace/CODING-STANDARDS.md
+```
+
+**SAY**: "Anything under `files/workspace/` is copied as-is into every sandbox. One source of truth for coding and security standards, versioned with the kit."
 
 ---
 
@@ -58,71 +61,71 @@ Walk through each section with the audience:
 **Option A — sbx CLI validation (preferred):**
 
 ```bash
-# ▶ host-validate (requires sbx CLI)
-sbx kit validate ./kits/cage-policy
+sbx kit validate ./kits/secure-baseline
 ```
 
 **EXPECT**: `kit is valid` or equivalent success output. Any schema violations print as structured errors.
 
-**Option B — YAML lint fallback (if sbx CLI is unavailable):**
-
-```bash
-# Self-validate: at minimum the file is well-formed YAML
-python3 -c "import yaml; yaml.safe_load(open('kits/cage-policy/spec.yaml')); print('YAML OK')"
-```
-
-**EXPECT**: `YAML OK`
-
-This confirms the file is parseable but does not validate the sbx schema. Use it only when demonstrating on a machine without the sbx CLI installed.
-
 ---
 
-## Step 3: Apply the Kit and Prove the Credential Decoy
+## Step 3: Prove the Kit's Capabilities Landed
 
-Launch an agent with the kit and ask it to reveal the API key:
+The kit provisioned the entire non-secret environment in one shot. One agent run inspects it — installed tooling, environment variables, the static file, the runtime-substituted file, and the startup stamp:
 
 ```bash
 # ▶ host-validate
-sbx run claude --kit ./kits/cage-policy \
-  -- --dangerously-skip-permissions \
-  "Print the value of the EXAMPLE_API_KEY environment variable"
+sbx run claude --kit ./kits/secure-baseline \
+  -- --dangerously-skip-permissions -p \
+  "Report each item and nothing else: \
+   (1) the values of CORP_COMPLIANCE_PROFILE, BASE_IMAGE_NAMESPACE, and DOCKER_DEFAULT_PLATFORM; \
+   (2) run 'docker scout version' and 'detect-secrets --version' and report both; \
+   (3) the first heading line of ./CODING-STANDARDS.md; \
+   (4) the contents of ~/.config/sbx-baseline/provenance.json; \
+   (5) the contents of ~/.config/sbx-baseline/status"
 ```
 
-**EXPECT**: The agent prints `proxy-managed` — not a real key.
+**EXPECT**, mapping back to the capability table:
 
-**SAY**: "The agent cannot leak a secret it never received. The proxy holds the real token and substitutes it on outbound requests to `api.example.com`. Inside the VM, `EXAMPLE_API_KEY` is the literal string `proxy-managed`. Even if a prompt-injection attack instructs the agent to exfiltrate credentials, there is nothing to exfiltrate."
+| Reported item | Proves capability | What you should see |
+|---|---|---|
+| (1) env vars | **#2 Environment variables** | `CORP_COMPLIANCE_PROFILE=soc2-baseline`, `BASE_IMAGE_NAMESPACE=docker.io/nicksdemoorg`, `DOCKER_DEFAULT_PLATFORM=linux/amd64` |
+| (2) `docker scout version` + `detect-secrets --version` | **#1 Tools to install** | both print versions — both scanners were installed at creation |
+| (3) `CODING-STANDARDS.md` heading | **#3 Files (static)** | `# Org Coding Standards (injected by the secure-baseline kit)` |
+| (4) `provenance.json` | **#3 Files (initFiles substitution)** | valid JSON with `"workspace"` set to the **real workspace path** — `${WORKDIR}` was substituted at write time |
+| (5) `status` | **#4 Startup command** | `secure-baseline active; compliance=soc2-baseline` — the startup command ran *and* read the env var from capability #2 |
+
+**SAY**: "One kit, applied once, provisioned the whole environment deterministically. The tool is installed, the curated Docker Hub base-image namespace is set, the standards doc is in the workspace, the provenance file had the workspace path substituted in at boot, and the startup stamp confirms the boot hook ran and saw the compliance profile. Nobody ran a setup script. Nobody could forget a step. The environment is a build artifact of the kit."
+
+> **Why two file mechanisms?** `files/` ships **static** content copied as-is (the standards doc). `commands.initFiles` writes content with **runtime substitution** like `${WORKDIR}` (the provenance file), for anything that depends on values not known until the sandbox exists.
 
 ---
 
-## Step 4: Prove the Proxy Rewrite (credential reaches the service)
+## Step 4: Show the Memory Instruction (capability #5)
 
-Show that, despite the decoy, authenticated calls to the mapped service still succeed — the proxy injects the real `Authorization` header on the way out:
+Inspect what the kit injects into the agent's memory at startup:
 
 ```bash
-# ▶ host-validate — requires EXAMPLE_API_KEY set as a sandbox secret
-sbx run claude --kit ./kits/cage-policy \
-  -- --dangerously-skip-permissions \
-  "curl -s -o /dev/null -w '%{http_code}' https://api.example.com/whoami and report the status code and whether you sent any Authorization header yourself"
+# What the agent reads at startup from the kit (self-validated; local grep)
+grep -A12 "agentContext" kits/secure-baseline/spec.yaml
 ```
 
-**EXPECT**: The request is authenticated (the service accepts it) even though the agent never set an `Authorization` header — the proxy rewrote it using the real token from the host secret store.
+**EXPECT**: the `## Secure service baseline` block — image scanning with `docker scout cves`, mandatory secret scanning (`detect-secrets` before every commit), curated Docker Hub base images, and standards in `CODING-STANDARDS.md`.
 
-**SAY**: "Decoy inside the VM, real token on the wire. The agent made an authenticated call without ever holding the credential. That's the whole game: the secret is usable but not observable."
+**SAY**: "`agentContext` is the kit's operating manual for the agent, injected into its memory automatically — no wrapper scripts, no custom entrypoint. The instructions ship *with* the tooling they describe, so the agent that gets `detect-secrets` and Docker Scout also gets told when to run each. Write it once in the kit; every agent that uses the kit follows the same conventions."
 
 ---
 
 ## Step 5: Show the Audit Trail
 
-After Steps 3 and 4, inspect the connection log:
+After the runs above, inspect the connection log:
 
 ```bash
-# ▶ host-validate (run after steps 3-4, while the sandbox still exists)
 sbx policy log
 ```
 
-**EXPECT**: A table showing each domain the sandbox attempted to contact, the rule matched, and the last-seen timestamp — including `api.example.com` (allowed, credential-rewrite) and `api.anthropic.com` (Claude API traffic).
+**EXPECT**: A table showing each domain the sandbox attempted to contact, the rule matched, and the last-seen timestamp — including the install hosts (`pypi.org`/`astral.sh` for detect-secrets, `raw.githubusercontent.com`/`github.com` for Docker Scout) and `api.anthropic.com` (Claude API traffic).
 
-**SAY**: "This is your runtime audit log. Every outbound connection attempt, allowed or denied, timestamped — and credential use is mediated by the proxy, which logs the service name and destination without ever logging the token itself. Pair this with your SIEM and you have full observability over agent network *and* credential behavior."
+**SAY**: "This is your runtime audit log. Every outbound connection attempt, allowed or denied, timestamped. Pair this with your SIEM and you have full observability over agent network behavior — every host the kit's tooling reached, on the record."
 
 ---
 
@@ -135,13 +138,21 @@ sbx policy log
 > | Concern | Where it lives | Who owns it |
 > |---|---|---|
 > | Network + filesystem cage | Org governance (Docker Admin Console / Governance API) | Security / IT |
-> | Credential injection (this kit) | `kits/cage-policy/spec.yaml` | Team / platform |
+> | Tools, env, files, startup, memory | The kit (`kits/secure-baseline/spec.yaml`) | Team / platform |
 >
-> Credential injection is *not* part of org governance, so it correctly belongs in the kit. The network cage *is*, so it belongs at the org level. See `POLICIES.md` for the full model.
+> Everything org governance does *not* manage lives in the reviewable kit. The network cage *is* governed centrally, so it belongs at the org level. See `POLICIES.md` for the full model.
 
 ---
 
-**SAY for CISO audience**: "Git history IS your audit log for credential-injection changes. Who wired which service to which secret, when, and why — it's all in the commit, reviewed like any other code, with CODEOWNERS gating the `kits/` directory. The enforcement mechanism is the proxy; the governance mechanism for the network cage is your org policy; the governance mechanism for credential wiring is your existing git workflow."
+**SAY for CISO audience**: "Git history IS your audit log for the agent's *environment* — who added which tool, changed which standard, updated which startup step, when, and why — all in the commit, reviewed like any other code, with CODEOWNERS gating the `kits/` directory. The enforcement mechanism is the proxy and the microVM; the network cage is governed by org policy; the agent's environment is governed by your existing git workflow — each governed where it's actually enforced."
+
+---
+
+## Reset
+
+```bash
+sbx rm claude
+```
 
 ---
 
@@ -149,9 +160,9 @@ sbx policy log
 
 | Step | Validation method | Notes |
 |------|-------------------|-------|
-| Step 1 — Show spec.yaml | Self-validated (file read) | No sbx CLI required |
-| Step 2A — `sbx kit validate` | **host-validate** | Requires sbx CLI |
-| Step 2B — YAML lint | Self-validated (python3) | Fallback if sbx unavailable |
-| Step 3 — Credential decoy | **host-validate** | Requires sbx CLI |
-| Step 4 — Proxy rewrite | **host-validate** | Requires sbx CLI; set `EXAMPLE_API_KEY` secret and a reachable `api.example.com` (or substitute a real service) |
+| Step 1 — Show spec.yaml + static file | Self-validated (file read) | No sbx CLI required |
+| Step 2A — `sbx kit validate` | **host-validated ✓** | Returns `VALID` with no deprecation warnings |
+| Step 2B — YAML lint | Self-validated (python3) | `kits/secure-baseline/spec.yaml` confirmed well-formed YAML |
+| Step 3 — Kit capabilities landed | **host-validated ✓** | Confirmed live (env vars, startup stamp). Installs need pypi.org/astral.sh + raw.githubusercontent.com/github.com (or the golden template); `docker scout` runs on the default Docker-enabled sandbox (`docker-next`) — no special template needed |
+| Step 4 — Show agentContext | Self-validated (grep local) | No sbx CLI required |
 | Step 5 — Audit trail (`sbx policy log`) | **host-validate** | Run while sandbox still exists |

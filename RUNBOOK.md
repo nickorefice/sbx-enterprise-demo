@@ -16,7 +16,7 @@ Confirm all of the following are in place **before** walking into the room.
 | `gh` CLI installed | `gh --version` |
 | `docker` daemon running on the host | `docker info` |
 | Demo workspace cloned | `ls ~/Documents/GitHub/sbx-enterprise-demo` |
-| Anthropic auth available to the proxy | Covered by "sbx CLI authenticated" above — Beat 5 uses the agent's own Anthropic credential, injected by the proxy (no extra key to set). `EXAMPLE_API_KEY` is only needed for add-on 02 |
+| Anthropic auth available to the proxy | Covered by "sbx CLI authenticated" above — Beat 5 uses the agent's own Anthropic credential, injected by the proxy (no extra key to set). |
 | Network policy allows this workspace's domains | `sbx policy ls` |
 
 ---
@@ -167,7 +167,7 @@ sbx policy log
 
 **SAY**: "Default deny. The agent tried to reach the internet — blocked. The allowlist is set by org governance — centrally, by your security team — and everything else is denied by default. The policy log is your audit trail."
 
-**▸ Gov aside**: "No data exfiltration via `curl`. No C2 callbacks. Egress is an explicit opt-in, not the default. The allowlist lives in org governance — the Docker Admin Console or Governance API — so it applies to every sandbox uniformly and cannot be overridden by a developer or a kit. Changes go through your governed workflow for your security team to review before they take effect. (Add-on 02 shows the flip side: what *does* belong in a reviewable kit — credential injection.)"
+**▸ Gov aside**: "No data exfiltration via `curl`. No C2 callbacks. Egress is an explicit opt-in, not the default. The allowlist lives in org governance — the Docker Admin Console or Governance API — so it applies to every sandbox uniformly and cannot be overridden by a developer or a kit. Changes go through your governed workflow for your security team to review before they take effect. (Add-on 02 shows the flip side: what *does* belong in a reviewable kit — the agent's tools, config, files, and instructions.)"
 
 ---
 
@@ -187,6 +187,7 @@ sbx exec -w "$WORKSPACE" demo-agent -- sh -c 'touch agent-can-write-here && pwd 
 **EXPECT**: `pwd` prints the workspace's absolute path — the *same* path as on your host — and the new file is listed: the agent **can** write here. Because the workspace is a read-write bind-mount (the default, non-`--clone` mode), the file appears on your host instantly; that's exactly how the agent's edits and commits reach you. (Clean up: `rm agent-can-write-here`.)
 
 ```bash
+
 # Now reach for something outside the workspace — your host home and its secrets
 sbx exec demo-agent -- ls /Users/nickorefice/.ssh
 ```
@@ -258,7 +259,7 @@ All egress — including the agent's own calls to Anthropic — flows through th
 
 **▸ Gov aside**: "Credential isolation by architecture, not policy. The keys your agents use — Anthropic, GitHub, your internal APIs — live in the host credential store and are injected by the proxy at request time. A compromised or prompt-injected agent can read every environment variable in the VM and find nothing, because the secrets were never there to begin with."
 
-> **This pattern is yours to declare, too.** Anthropic and GitHub are proxy-injected for you out of the box. **Add-on 02** shows how to declare the *same* injection for your own internal services as reviewable kit code (`serviceDomains` + `serviceAuth` + `credentials.sources` + a `proxy-managed` decoy) — so an agent calling `api.your-company.com` authenticates without ever holding the token.
+> **This pattern is yours to extend, too.** Anthropic and GitHub are proxy-injected for you out of the box. For your own internal services, `sbx secret set-custom` does the same — a `proxy-managed` placeholder in the VM, the real token swapped in on the wire to `api.your-company.com`, and nothing secret in git — so an agent authenticates without ever holding the token.
 
 ---
 
@@ -331,6 +332,7 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 | Module | Audience Signal |
 |---|---|
 | **Golden Image** (`templates/golden/`) | "Who controls what's in the agent environment?" |
+| **Kit-as-Code** (`kits/secure-baseline/`, add-on 02) | "What's in an agent's environment, and who approved it?" — the provisioning contract (tools, env, files, startup, memory) as reviewable code |
 | **Ruff Linter Kit** (`kits/ruff-lint/`) | "How do you enforce coding standards across agents?" |
 | **Voting App Live Edit** (`services/`) | "Can you show the agent actually doing something useful?" |
 | **Org Policy Deep Dive** | "Walk me through how security sets the guardrails." |

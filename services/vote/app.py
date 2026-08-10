@@ -17,7 +17,7 @@ def healthz():
 @app.post("/vote")
 def vote():
     choice = request.args.get("choice", "").lower()
-    if choice not in votes:
+    if choice not in votes.keys():
         return jsonify({"error": "choice must be 'a' or 'b'"}), 400
     votes[choice] += 1
     return jsonify({"choice": choice, "totals": votes})
