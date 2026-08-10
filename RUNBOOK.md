@@ -101,18 +101,35 @@ The contrast is the point: the host runs the **Darwin** (XNU) kernel, the sandbo
 **SAY**: "The agent has its own Docker engine. When it spins up a container — say, to run a test database — that container lives inside the VM, not on your host."
 
 ```bash
-# The sandbox has its own dockerd — not the host's
+# The sandbox has its own dockerd — fresh, with nothing running
 sbx exec demo-agent -- docker ps
 ```
 
 **EXPECT**: An empty container list — the sandbox's Docker daemon is fresh with no containers.
 
+Now make it concrete: have the agent's engine start a container, then look for it from both sides.
+
 ```bash
-# The host's Docker daemon shows the sandbox itself, not the agent's containers
-docker ps
+# Start a container INSIDE the sandbox's own engine
+sbx exec demo-agent -- docker run -d --name demo-nginx nginx
+# It shows up in the sandbox's docker...
+sbx exec demo-agent -- docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
 ```
 
-**EXPECT**: The host `docker ps` lists the sandbox VM (and any other host-level containers), but the agent's `docker ps` output is completely separate.
+**EXPECT**: `demo-nginx` is listed — the sandbox's engine is running it.
+
+```bash
+# ...but it is NOWHERE on your host's Docker
+docker ps -a --format '{{.Names}}' | grep -x demo-nginx || echo "demo-nginx not present on host ✓"
+```
+
+**EXPECT**: `demo-nginx not present on host ✓`. The container the agent started exists only inside the sandbox. (If you run Docker Desktop, a plain `docker ps` on the host lists *your* host containers — never the sandbox's. `sbx` runs each microVM on its own runtime, not your host's Docker daemon, so it needs no Docker Desktop at all; if you have none running, `docker ps` on the host simply errors, which makes the same point.)
+
+Clean up before moving on:
+
+```bash
+sbx exec demo-agent -- docker rm -f demo-nginx
+```
 
 ---
 
@@ -345,7 +362,7 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 |---|---|---|
 | Beat 0 — Prep & Context | Validated live | Repo structure is stable |
 | Beat 1 — Separate Kernel | Validated live | `uname -srm` shows Darwin (host) vs Linux (sandbox); command updated from `uname -r` |
-| Beat 2 — Own Docker Engine | Validated live | Separate `docker ps` inventories confirmed |
+| Beat 2 — Own Docker Engine | Validated live | Confirmed on sbx v0.38: started `demo-nginx` inside the sandbox — appears in the sandbox's `docker ps`, absent from host `docker ps -a`. Corrected the old claim that host `docker ps` "lists the sandbox VM": it does not — sbx runs each microVM on its own runtime (`containerd-shim-nerdbox`), not the host Docker daemon, so the sandbox and its containers never appear in host Docker (and no Docker Desktop is required on the host) |
 | Beat 3 — Default-Deny Network | Validated live | Confirmed on `demo-agent` (sbx v0.38): outbound to `example.com` returns HTTP 403. `sbx policy ls` now shows **org-governed named policy groups** with a `Managed by <org>` header (EXPECT block updated to match); `sbx policy log` splits into Blocked/Allowed sections with counts (EXPECT updated) |
 | Beat 4 — Scoped Filesystem Access | Validated live | Workspace is a read-write `virtiofs` bind-mount at the host's absolute path inside the VM; host-visible write confirmed. `sbx exec` defaults to `/home/agent/workspace` (VM-local, NOT the mount), so the write command now uses `-w "$WORKSPACE"` to land on the bind-mount. Non-mounted host paths return `No such file or directory` |
 | Beat 5 — Proxy-Managed Credentials | Validated live | Confirmed on `demo-agent` (sbx v0.38): `ANTHROPIC_API_KEY` is unset inside the VM and `HTTPS_PROXY=http://gateway.docker.internal:3128`. Reworked to use the agent's real Anthropic credential |
