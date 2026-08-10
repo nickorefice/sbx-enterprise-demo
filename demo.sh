@@ -80,7 +80,7 @@ cmd_prep() {
   ok "Ready!"
   info "To start an agent session, run on the host:"
   info ""
-  info "  sbx run $SANDBOX_NAME -- --dangerously-skip-permissions '<prompt>'"
+  info "  sbx run --name $SANDBOX_NAME -- --dangerously-skip-permissions '<prompt>'"
   info ""
   info "Replace <prompt> with your task description."
 }

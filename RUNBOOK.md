@@ -136,7 +136,7 @@ docker ps
 
 ```bash
 # Ask the agent to attempt an outbound request — it will be blocked
-sbx run demo-agent -- --dangerously-skip-permissions \
+sbx run --name demo-agent -- --dangerously-skip-permissions \
   "Try to curl example.com and show me the exact output, including any errors"
 ```
 
@@ -234,7 +234,7 @@ Empty. There is **no** Anthropic key in the sandbox environment — not a decoy,
 
 ```bash
 # …and yet the agent plainly works — it's Claude, talking to api.anthropic.com right now
-sbx run demo-agent -- --dangerously-skip-permissions \
+sbx run --name demo-agent -- --dangerously-skip-permissions \
   "In one sentence, tell me what services/vote/app.py does."
 ```
 
