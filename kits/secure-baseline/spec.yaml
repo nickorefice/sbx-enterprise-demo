@@ -1,0 +1,83 @@
+schemaVersion: "1"
+kind: mixin
+name: secure-baseline
+displayName: Secure Service Baseline (as code)
+description: |
+  The provisioning contract for an enterprise coding agent, declared as reviewable
+  code: tools to install, environment variables to set, files to drop in (static
+  and runtime-substituted), a startup command, and agent memory.
+
+  Network allow/deny rules are intentionally NOT declared here. In a governed
+  enterprise, org-level governance owns network (and filesystem) access and
+  overrides kit-level rules entirely, so a kit allowlist is just noise. (For
+  ungoverned/individual use it still applies; this kit targets governed enterprise
+  environments.)
+
+commands:
+  # ── Tools to install ────────────────────────────────────────────────────────
+  # Runs ONCE at sandbox creation (not on every start). user: "1000" is the agent
+  # user, so tools land in the agent's home. Two scanners:
+  #   • Docker Scout — SCA (CVE + SBOM) on the images the agent builds.
+  #   • detect-secrets — scans the working tree for secrets before commit.
+  install:
+    - command: "curl -sSfL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s --"
+      user: "1000"
+      description: Install the Docker Scout CLI (image CVE / SBOM scanning)
+    - command: "uv tool install detect-secrets"
+      user: "1000"
+      description: Install detect-secrets (pre-commit secret scanner)
+
+  # ── Startup commands ──────────────────────────────────────────────────────
+  # Runs on EVERY sandbox start (install runs only at creation), so it MUST be
+  # idempotent. Here it writes a provisioning status stamp the agent or your audit
+  # tooling can inspect — and it reads CORP_COMPLIANCE_PROFILE, set below, proving
+  # environment variables and startup commands work together.
+  startup:
+    - command: ["sh", "-lc", "mkdir -p ~/.config/sbx-baseline && echo \"secure-baseline active; compliance=${CORP_COMPLIANCE_PROFILE:-unset}\" > ~/.config/sbx-baseline/status"]
+      user: "1000"
+      description: Write the secure-baseline status stamp on each start
+
+  # ── Files to drop in (runtime-substituted) ────────────────────────────────
+  # initFiles are written with variable substitution — use them when the content
+  # depends on runtime values like ${WORKDIR}. Static files that never change go
+  # under files/ instead (see files/workspace/CODING-STANDARDS.md).
+  initFiles:
+    - path: /home/agent/.config/sbx-baseline/provenance.json
+      content: |
+        {
+          "kit": "secure-baseline",
+          "workspace": "${WORKDIR}",
+          "complianceProfile": "soc2-baseline"
+        }
+      mode: "0600"
+      onlyIfMissing: true
+
+# ── Environment variables to set ──────────────────────────────────────────────
+# Non-secret, org-standard configuration set directly inside the VM.
+environment:
+  variables:
+    # Pull container base images from the org's curated Docker Hub namespace
+    # (Docker Hardened Images), never arbitrary public images.
+    BASE_IMAGE_NAMESPACE: "docker.io/nicksdemoorg"
+    # Standardize the build platform across every agent that builds images.
+    DOCKER_DEFAULT_PLATFORM: "linux/amd64"
+    # Opt out of third-party tool telemetry by default.
+    DO_NOT_TRACK: "1"
+    # Stamped into the startup status file and referenced in agent memory.
+    CORP_COMPLIANCE_PROFILE: "soc2-baseline"
+
+# ── Memory instructions for the agent ─────────────────────────────────────────
+# Appended to the agent's memory file at startup — the kit ships its own operating
+# manual, inseparable from the tooling it installs.
+agentContext: |
+  ## Secure service baseline
+  This sandbox is provisioned by the `secure-baseline` kit — declared as code and
+  PR-reviewed. Conventions for working here:
+  - Image scanning: run `docker scout cves` on any image you build; do not ship one
+    with fixable critical/high CVEs.
+  - Secret scanning is mandatory. Run `detect-secrets scan` before every commit;
+    never commit a finding.
+  - Container base images come from the org's curated Docker Hub namespace
+    (`BASE_IMAGE_NAMESPACE`, Docker Hardened Images); never pull arbitrary public
+    images or override it.
+  - Org coding standards live in `CODING-STANDARDS.md` at the workspace root.
