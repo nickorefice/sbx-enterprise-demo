@@ -29,3 +29,11 @@ templates/golden/*.tar
 
 # sbx
 .sbx/
+
+# sbx kit-dropped workspace artifacts (re-created on each `sbx run --kit`;
+# the tracked sources live under kits/*/files/workspace/)
+/ruff.toml
+/CODING-STANDARDS.md
+
+# Claude Code machine-local settings (permissions, local dirs) — not shared
+.claude/settings.local.json
