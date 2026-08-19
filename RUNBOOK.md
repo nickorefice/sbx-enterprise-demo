@@ -353,6 +353,7 @@ After Beat 6, pivot to one of the following depending on audience interest. Each
 | **Ruff Linter Kit** (`kits/ruff-lint/`) | "How do you enforce coding standards across agents?" |
 | **Voting App Live Edit** (`services/`) | "Can you show the agent actually doing something useful?" |
 | **Org Policy Deep Dive** | "Walk me through how security sets the guardrails." |
+| **Sandbox Breakout Defense** (advanced, `addons/05-breakout-defense.md`) | "I read that the Claude Code sandbox was bypassed — twice. Why is sbx different?" — run real CVE-2025-66479 + SOCKS5 null-byte techniques and show them contained |
 
 ---
 

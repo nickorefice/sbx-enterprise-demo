@@ -8,7 +8,7 @@ A polished, end-to-end demo for **Docker Sandboxes (`sbx`)** — the tool that r
 
 **Beats 1–6 are the spine** — a 23-minute live proof of five isolation layers that works for any audience. Run that first.
 
-The **four add-on modules** are independently runnable segments you toggle per audience. Each takes 5–15 minutes. Mix and match; none depends on another.
+The **five add-on modules** are independently runnable segments you toggle per audience. Each takes 5–15 minutes. Mix and match; none depends on another (add-on 05 is the *advanced* module — run it after the standard demo).
 
 ```
 ./demo.sh prep   # pre-flight check: tools, sandbox creation, service validation
@@ -27,6 +27,7 @@ The **four add-on modules** are independently runnable segments you toggle per a
 | 2 | Kit-as-Code — Agent environment as reviewable `spec.yaml` (tools, env, files, startup, memory) | CISOs, security architects, platform teams | Audience asks "what's in an agent's environment, and who approved it?" | [addons/02-kit-as-code.md](./addons/02-kit-as-code.md) |
 | 3 | Golden Template — Hardened org base image | Platform engineering, security | Audience asks "how do we enforce a baseline across all agents?" | [addons/03-golden-template.md](./addons/03-golden-template.md) |
 | 4 | Dev-Velocity Kits — Stacked mixins + Git URL load | Developer advocates, platform teams | Audience wants composability and reproducibility for developer workflows | [addons/04-dev-velocity-kits.md](./addons/04-dev-velocity-kits.md) |
+| 5 | **Sandbox Breakout Defense** — real Claude Code network-bypass techniques (CVE-2025-66479 + SOCKS5 null-byte), contained by sbx | CISOs, security architects, red teams | *Advanced.* Audience has read "the Claude Code sandbox was bypassed" and asks "why is sbx different?" | [addons/05-breakout-defense.md](./addons/05-breakout-defense.md) |
 
 ---
 
@@ -47,7 +48,9 @@ sbx-enterprise-demo/
 │   ├── fleet.sh                     ← setup / status / reset helper for add-on 01
 │   ├── 02-kit-as-code.md            ← [Security] whole agent environment as code
 │   ├── 03-golden-template.md        ← [Security] hardened org base image
-│   └── 04-dev-velocity-kits.md      ← [Dev]      stacked kits + Git URL load
+│   ├── 04-dev-velocity-kits.md      ← [Dev]      stacked kits + Git URL load
+│   ├── 05-breakout-defense.md       ← [Security] real network-bypass techniques, contained
+│   └── breakout.sh                  ← probe harness for add-on 05 (run inside the sandbox)
 ├── kits/
 │   ├── secure-baseline/             ← mixin: full provisioning contract (add-on 02)
 │   │   ├── spec.yaml                  tools, env, files, startup, memory
